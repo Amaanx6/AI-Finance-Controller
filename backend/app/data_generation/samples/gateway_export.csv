@@ -1,0 +1,90 @@
+record_id,date,amount,description,reference_number
+GW_0000,2025-08-04,46905,Payout to vendor 0,REF00000
+GW_0001,2025-08-07,21049,Payout to vendor 1,REF00001
+GW_0002,2025-08-18,49348,Payout to vendor 2,REF00002
+GW_0003,2025-07-31,7082,Payout to vendor 3,REF00003
+GW_0004,2025-08-19,38118,Payout to vendor 4,REF00004
+GW_0005,2025-08-18,47590,Payout to vendor 5,REF00005
+GW_0006,2025-08-10,43618,Payout to vendor 6,REF00006
+GW_0007,2025-08-10,32696,Payout to vendor 7,REF00007
+GW_0008,2025-08-03,27059,Payout to vendor 8,REF00008
+GW_0009,2025-08-13,28526,Payout to vendor 9,REF00009
+GW_0010,2025-08-17,35108,Payout to vendor 10,REF00010
+GW_0011,2025-08-09,41178,Payout to vendor 11,REF00011
+GW_0012,2025-08-01,9558,Payout to vendor 12,REF00012
+GW_0013,2025-08-04,20256,Payout to vendor 13,REF00013
+GW_0014,2025-08-12,46660,Payout to vendor 14,REF00014
+GW_0015,2025-08-10,18730,Payout to vendor 15,REF00015
+GW_0016,2025-08-18,16215,Payout to vendor 16,REF00016
+GW_0017,2025-08-09,29867,Payout to vendor 17,REF00017
+GW_0018,2025-08-08,8665,Payout to vendor 18,REF00018
+GW_0019,2025-08-04,22546,Payout to vendor 19,REF00019
+GW_0020,2025-08-08,25622,Payout to vendor 20,REF00020
+GW_0021,2025-08-04,35071,Payout to vendor 21,REF00021
+GW_0022,2025-08-19,41789,Payout to vendor 22,REF00022
+GW_0023,2025-08-18,33077,Payout to vendor 23,REF00023
+GW_0024,2025-08-16,14065,Payout to vendor 24,REF00024
+GW_0025,2025-08-05,12185,Payout to vendor 25,REF00025
+GW_0026,2025-08-04,44086,Payout to vendor 26,REF00026
+GW_0027,2025-08-16,35674,Payout to vendor 27,REF00027
+GW_0028_0,2025-08-21,13808,Individual payout 1 in batch,
+GW_0028_1,2025-08-20,3876,Individual payout 2 in batch,
+GW_0028_2,2025-08-22,13169,Individual payout 3 in batch,
+GW_0028_3,2025-08-22,10797,Individual payout 4 in batch,
+GW_0029_0,2025-08-03,10201,Individual payout 1 in batch,
+GW_0029_1,2025-08-03,14483,Individual payout 2 in batch,
+GW_0029_2,2025-08-04,4927,Individual payout 3 in batch,
+GW_0030_0,2025-07-31,10837,Individual payout 1 in batch,
+GW_0030_1,2025-08-01,14757,Individual payout 2 in batch,
+GW_0031_0,2025-08-04,5923,Individual payout 1 in batch,
+GW_0031_1,2025-08-02,2949,Individual payout 2 in batch,
+GW_0031_2,2025-08-02,5946,Individual payout 3 in batch,
+GW_0032_0,2025-08-19,9787,Individual payout 1 in batch,
+GW_0032_1,2025-08-21,11007,Individual payout 2 in batch,
+GW_0032_2,2025-08-20,4705,Individual payout 3 in batch,
+GW_0032_3,2025-08-20,6342,Individual payout 4 in batch,
+GW_0033_0,2025-08-09,12647,Individual payout 1 in batch,
+GW_0033_1,2025-08-07,8118,Individual payout 2 in batch,
+GW_0033_2,2025-08-09,9177,Individual payout 3 in batch,
+GW_0033_3,2025-08-07,10479,Individual payout 4 in batch,
+GW_0034_0,2025-08-07,3163,Individual payout 1 in batch,
+GW_0034_1,2025-08-09,13597,Individual payout 2 in batch,
+GW_0035_0,2025-08-19,6562,Individual payout 1 in batch,
+GW_0035_1,2025-08-18,12960,Individual payout 2 in batch,
+GW_0036_0,2025-08-07,14855,Individual payout 1 in batch,
+GW_0036_1,2025-08-07,9749,Individual payout 2 in batch,
+GW_0037_0,2025-08-21,8735,Individual payout 1 in batch,
+GW_0037_1,2025-08-20,9651,Individual payout 2 in batch,
+GW_0037_2,2025-08-20,13945,Individual payout 3 in batch,
+GW_0038_0,2025-08-13,5116,Individual payout 1 in batch,
+GW_0038_1,2025-08-13,10786,Individual payout 2 in batch,
+GW_0039_0,2025-08-18,11016,Individual payout 1 in batch,
+GW_0039_1,2025-08-18,3604,Individual payout 2 in batch,
+GW_0039_2,2025-08-18,2828,Individual payout 3 in batch,
+GW_0040_0,2025-08-01,8570,Individual payout 1 in batch,
+GW_0040_1,2025-08-01,2960,Individual payout 2 in batch,
+GW_0041_0,2025-08-06,13968,Individual payout 1 in batch,
+GW_0041_1,2025-08-06,14834,Individual payout 2 in batch,
+GW_0041_2,2025-08-04,11105,Individual payout 3 in batch,
+GW_0041_3,2025-08-06,12844,Individual payout 4 in batch,
+GW_0042,2025-08-02,25552,Payment gateway payout,
+GW_0043,2025-08-18,37954,Payment gateway payout,
+GW_0044,2025-08-05,10250,Payment gateway payout,
+GW_0045,2025-08-09,49250,Payment gateway payout,
+GW_0046,2025-08-18,21135,Payment gateway payout,
+GW_0047,2025-08-18,32474,Payment gateway payout,
+GW_0048,2025-08-11,48891,Payment gateway payout,
+GW_0049,2025-08-21,13577,Payment gateway payout,
+GW_0050,2025-08-02,9754,Payment gateway payout,
+GW_0051,2025-08-03,11552,Payment gateway payout,
+GW_0052,2025-08-15,13638,Payout 52,REF00052
+GW_0053,2025-08-15,48093,Payout 53,REF00053
+GW_0054,2025-08-03,41501,Payout 54,REF00054
+GW_0055,2025-08-15,38055,Payout 55,REF00055
+GW_0056,2025-08-21,13490,Payout 56,REF00056
+GW_0057,2025-08-16,14747,Payout 57,REF00057
+GW_0058,2025-08-13,7600,Payout 58,REF00058
+GW_0059,2025-08-05,45785,Payout 59,REF00059
+GW_0060,2025-08-14,26949,Payout 60,REF00060
+GW_0061,2025-08-05,19615,Payout 61,REF00061
+GW_0063,2025-08-12,23292,Orphan gateway entry 63,
