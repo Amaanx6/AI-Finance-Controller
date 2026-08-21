@@ -1,0 +1,1 @@
+"""MatchRateDisplay component"""
