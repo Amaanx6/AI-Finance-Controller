@@ -1,0 +1,106 @@
+{
+  "bank_record_id": "B-101",
+  "trace": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_08f22da8-caf5-45b1-b551-9a0ce22a408f",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"AWS CLOUD HOSTING SERVICES RECURRING\",\"desc_b\":\"AMAZON WEB SERVICES\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_08f22da8-caf5-45b1-b551-9a0ce22a408f",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.5926, \"explanation\": \"Shared terms: [services]; Token overlap score: 0.59\"}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_d4385eec-10fd-4ea0-85e5-93dcb72f8a3a",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"candidates\":[{\"amount\":100,\"record_id\":\"L-999\"},{\"amount\":102,\"record_id\":\"L-101\"}],\"target_amount\":100}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_d4385eec-10fd-4ea0-85e5-93dcb72f8a3a",
+      "name": "sum_check",
+      "content": "{\"match_found\": false, \"count\": 0, \"matches\": []}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_09cd8072-235a-4c26-bf99-5dd99a59aa5f",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"AWS CLOUD HOSTING SERVICES RECURRING\",\"desc_b\":\"STARBUCKS STORE #1209 COFFEE\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_09cd8072-235a-4c26-bf99-5dd99a59aa5f",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_52b6bbb3-d73e-4452-b2b2-23db58eadcd7",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"candidates\":[{\"amount\":102,\"record_id\":\"L-101\"}],\"target_amount\":100}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_52b6bbb3-d73e-4452-b2b2-23db58eadcd7",
+      "name": "sum_check",
+      "content": "{\"match_found\": false, \"count\": 0, \"matches\": []}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_800a34b6-aa22-409d-95df-6067cd6ac1d1",
+          "type": "function",
+          "function": {
+            "name": "submit_final_decision",
+            "arguments": "{\"confidence\":\"high\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[],\"reasoning\":\"The bank transaction amount is 100.0 with description 'AWS CLOUD HOSTING SERVICES RECURRING'. Ledger candidate L-999 matches amount exactly but description similarity is 0.0 (completely unrelated), violating rule 2. Ledger candidate L-101 has description similarity 0.5926 (some overlap) and amount 102, which is within the 3% fee tolerance, but the sum_check tool reported no valid match for target 100, indicating the amount does not satisfy the fee tolerance criteria as implemented. Therefore, no ledger record logically matches both amount and description. No gateway candidates are provided. Based on tool outputs, we conclude there is no suitable match.\",\"status\":\"no_match\"}"
+          }
+        }
+      ]
+    }
+  ],
+  "final_decision": {
+    "confidence": "high",
+    "matched_gateway_ids": [],
+    "matched_ledger_ids": [],
+    "reasoning": "The bank transaction amount is 100.0 with description 'AWS CLOUD HOSTING SERVICES RECURRING'. Ledger candidate L-999 matches amount exactly but description similarity is 0.0 (completely unrelated), violating rule 2. Ledger candidate L-101 has description similarity 0.5926 (some overlap) and amount 102, which is within the 3% fee tolerance, but the sum_check tool reported no valid match for target 100, indicating the amount does not satisfy the fee tolerance criteria as implemented. Therefore, no ledger record logically matches both amount and description. No gateway candidates are provided. Based on tool outputs, we conclude there is no suitable match.",
+    "status": "no_match"
+  }
+}

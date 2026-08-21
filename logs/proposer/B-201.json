@@ -1,0 +1,50 @@
+{
+  "bank_record_id": "B-201",
+  "trace": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_145e6c3e-39d5-4f65-b265-626ed55bb4e9",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"candidates\":[{\"amount\":50,\"record_id\":\"L-201\"},{\"amount\":50,\"record_id\":\"L-202\"},{\"amount\":100,\"record_id\":\"L-203\"},{\"amount\":80,\"record_id\":\"L-204\"}],\"target_amount\":195}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_145e6c3e-39d5-4f65-b265-626ed55bb4e9",
+      "name": "sum_check",
+      "content": "{\"match_found\": true, \"count\": 1, \"matches\": [{\"candidate_ids\": [\"L-201\", \"L-202\", \"L-203\"], \"candidate_sum\": 200, \"target_amount\": 195, \"fee_amount\": 5, \"fee_percentage\": 2.5, \"subset_size\": 3, \"difference\": 5}]}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_7fa6953f-0f24-4610-8326-2b385ced00b0",
+          "type": "function",
+          "function": {
+            "name": "submit_final_decision",
+            "arguments": "{\"confidence\":\"medium\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[\"L-201\",\"L-202\",\"L-203\"],\"reasoning\":\"Sum_check identified a subset of ledger candidates (L-201, L-202, L-203) whose total of 200 exceeds the bank amount 195 by 5, which corresponds to a 2.5% fee\u2014within the allowed 3% tolerance. No other subsets fit the amount criteria. No description data is available for ledger records, so the decision relies on the amount match. This subset is therefore the most plausible match.\",\"status\":\"suggested_match\"}"
+          }
+        }
+      ]
+    }
+  ],
+  "final_decision": {
+    "confidence": "medium",
+    "matched_gateway_ids": [],
+    "matched_ledger_ids": [
+      "L-201",
+      "L-202",
+      "L-203"
+    ],
+    "reasoning": "Sum_check identified a subset of ledger candidates (L-201, L-202, L-203) whose total of 200 exceeds the bank amount 195 by 5, which corresponds to a 2.5% fee\u2014within the allowed 3% tolerance. No other subsets fit the amount criteria. No description data is available for ledger records, so the decision relies on the amount match. This subset is therefore the most plausible match.",
+    "status": "suggested_match"
+  }
+}
