@@ -138,7 +138,14 @@ class TransactionGenerator:
         return mappings
 
     def pattern_3_description_mismatch(self, count: int) -> List[Dict]:
-        """Description mismatches (~15%): same txn, no shared reference."""
+        """Description mismatches (~15%): same txn, no shared reference.
+
+        To induce ambiguity for an amount+date-only matcher, add a single
+        decoy record (unrelated transaction) in one of the other sources for
+        each transaction. The decoy has an amount within ±1% and date within
+        ±2-3 days of the true values, but is not part of the ground truth
+        mapping.
+        """
         mappings = []
         for i in range(count):
             txn_id = self.transaction_id_counter
@@ -148,7 +155,7 @@ class TransactionGenerator:
             base_date_offset = random.randint(0, 20)
             date_str = self.generate_date(base_date_offset)
 
-            # Bank statement
+            # Bank statement (one of the sources)
             bank_id = f"BANK_{txn_id:04d}"
             bank_desc = f"RZRPY SETL {base_date_offset:02d}/19"
             self.add_record("bank_statement", bank_id, date_str, base_amount, bank_desc, "")
@@ -164,6 +171,22 @@ class TransactionGenerator:
             gateway_date = self.generate_date(base_date_offset, day_variance=1)
             gateway_desc = "Payment gateway payout"
             self.add_record("gateway_export", gateway_id, gateway_date, base_amount, gateway_desc, "")
+
+            # Add a decoy in one of the other sources (randomly choose ledger or gateway)
+            decoy_source = random.choice(["internal_ledger", "gateway_export"])
+            # Decoy amount within ±1%
+            decoy_amount = int(base_amount * (1 + random.uniform(-0.01, 0.01)))
+            # Decoy date within ±3 days
+            decoy_date = self.generate_date(base_date_offset, day_variance=3)
+
+            if decoy_source == "internal_ledger":
+                decoy_id = f"LEDG_{txn_id:04d}_DECOY"
+                decoy_desc = f"Unrelated vendor {txn_id} (decoy)"
+                self.add_record("internal_ledger", decoy_id, decoy_date, decoy_amount, decoy_desc, "")
+            else:
+                decoy_id = f"GW_{txn_id:04d}_DECOY"
+                decoy_desc = f"Unrelated payout {txn_id} (decoy)"
+                self.add_record("gateway_export", decoy_id, decoy_date, decoy_amount, decoy_desc, "")
 
             mappings.append({
                 "transaction_id": txn_id,
