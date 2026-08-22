@@ -17,7 +17,7 @@ GROQ_MAX_TOKENS = 1024
 # --- Gemini settings ---
 # Using Gemini's OpenAI-compatible endpoint (see proposer.py comment for why).
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL_NAME = os.environ.get("GEMINI_MODEL_NAME", "gemini-2.5-flash")
+GEMINI_MODEL_NAME = os.environ.get("GEMINI_MODEL_NAME", "gemini-3.6-flash")
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 # Gemini free-tier limits are per-minute RPM + RPD, NOT a strict TPM meter like

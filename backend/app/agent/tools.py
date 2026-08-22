@@ -1,6 +1,9 @@
-from itertools import combinations
+import os
 import re
+from itertools import combinations
 from typing import Any, Dict, List, Optional
+
+os.environ["RAPIDFUZZ_IMPLEMENTATION"] = "python"
 
 try:
     from rapidfuzz import fuzz
@@ -183,10 +186,10 @@ def description_similarity(desc_a: str, desc_b: str) -> Dict[str, Any]:
         raw_score = 0.0
     else:
         if HAS_RAPIDFUZZ:
-            raw_score = fuzz.token_set_ratio(str_a, str_b) / 100.0
+            raw_score = fuzz.token_set_ratio(str_a, str_b) / 100.0 # type: ignore[possibly-unbound]
         else:
             token_overlap = len(shared_tokens) / min(len(tokens_a), len(tokens_b))
-            seq_ratio = difflib.SequenceMatcher(None, str_a, str_b).ratio()
+            seq_ratio = difflib.SequenceMatcher(None, str_a, str_b).ratio() # type: ignore[possibly-unbound]
             raw_score = max(token_overlap, seq_ratio)
 
     explanation_parts = []

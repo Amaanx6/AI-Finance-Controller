@@ -1,0 +1,44 @@
+{
+  "record_id": "BANK_0028",
+  "provider": "groq",
+  "history": [
+    {
+      "agent": "proposer",
+      "attempt": 1,
+      "result": {
+        "matched_gateway_ids": [],
+        "matched_ledger_ids": [
+          "LEDG_0028_0",
+          "LEDG_0028_1",
+          "LEDG_0028_2",
+          "LEDG_0028_3"
+        ],
+        "status": "suggested_match",
+        "confidence": "high",
+        "reasoning": "Bank transaction BANK_0028 ('Settlement batch 28', amount 40,504.0) matches the four components of batch 28: LEDG_0028_0 (13,808.0), LEDG_0028_1 (3,876.0), LEDG_0028_2 (13,169.0), and LEDG_0028_3 (10,797.0). The gross sum of these four ledger items is 41,650.0. Accounting for a 2.75% gateway fee (1,146.0), the net settlement amount equals 40,504.0, which perfectly matches the bank target. Description similarity confirms high term/reference overlap ('batch 28')."
+      }
+    },
+    {
+      "agent": "verifier",
+      "attempt": 1,
+      "result": {
+        "decision": "agree",
+        "reasoning": "The four proposed ledger components (LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, LEDG_0028_3) all explicitly belong to batch 28, matching bank transaction BANK_0028 ('Settlement batch 28'). Their gross sum is 41,650.0, which after deducting a 2.75% gateway fee (1,146.0) exactly yields the target net amount of 40,504.0, within the 3.0% fee tolerance."
+      }
+    }
+  ],
+  "final_status": "confirmed",
+  "final_decision": {
+    "matched_gateway_ids": [],
+    "matched_ledger_ids": [
+      "LEDG_0028_0",
+      "LEDG_0028_1",
+      "LEDG_0028_2",
+      "LEDG_0028_3"
+    ],
+    "status": "suggested_match",
+    "confidence": "high",
+    "reasoning": "Bank transaction BANK_0028 ('Settlement batch 28', amount 40,504.0) matches the four components of batch 28: LEDG_0028_0 (13,808.0), LEDG_0028_1 (3,876.0), LEDG_0028_2 (13,169.0), and LEDG_0028_3 (10,797.0). The gross sum of these four ledger items is 41,650.0. Accounting for a 2.75% gateway fee (1,146.0), the net settlement amount equals 40,504.0, which perfectly matches the bank target. Description similarity confirms high term/reference overlap ('batch 28')."
+  },
+  "wall_clock_time_sec": 79.5
+}

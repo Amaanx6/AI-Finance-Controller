@@ -262,8 +262,8 @@ def _call_gemini(messages: List[ChatCompletionMessageParam], max_retries: int) -
             _gemini_track_and_throttle()
             response = gemini_client.chat.completions.create(
                 model=config.GEMINI_MODEL_NAME,
-                messages=messages,
-                tools=AGENT_TOOLS,
+                messages=messages, # type: ignore[arg-type]
+                tools=AGENT_TOOLS, # type: ignore[arg-type]
                 tool_choice="auto",
                 max_tokens=config.GEMINI_MAX_TOKENS
             )
@@ -363,16 +363,9 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
             response = call_llm_with_retry(messages)
             message = response.choices[0].message
 
-            msg_dict: Dict[str, Any] = {"role": "assistant", "content": message.content}
-            if message.tool_calls:
-                msg_dict["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments}
-                    } for tc in message.tool_calls
-                ]
-
+            # [FIXED HERE]: Use model_dump to preserve thought_signature and other SDK metadata
+            msg_dict = message.model_dump(exclude_unset=True)
+            
             messages.append(cast(ChatCompletionMessageParam, msg_dict))
             trace_log.append(msg_dict)
 

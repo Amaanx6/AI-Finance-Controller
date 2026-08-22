@@ -1,0 +1,38 @@
+{
+  "record_id": "BANK_0042",
+  "provider": "gemini",
+  "history": [
+    {
+      "agent": "proposer",
+      "attempt": 1,
+      "result": {
+        "matched_gateway_ids": [],
+        "confidence": "high",
+        "matched_ledger_ids": [
+          "LEDG_0042"
+        ],
+        "reasoning": "LEDG_0042 has an exact amount match of 25552.0 with the bank record. Furthermore, the bank description 'RZRPY SETL 01/19' is an abbreviated form of 'Razorpay settlement batch #4042' (LEDG_0042). Although description_similarity returned 0.0 due to token-level abbreviation differences (RZRPY vs Razorpay, SETL vs settlement), per Rule 2 and Rule 3, description mismatch due to naming conventions does not disqualify a match when the amount matches exactly and context aligns. Therefore, LEDG_0042 is selected as the matched ledger record.",
+        "status": "suggested_match"
+      }
+    },
+    {
+      "agent": "verifier",
+      "attempt": 1,
+      "result": {
+        "decision": "agree",
+        "reasoning": "LEDG_0042 matches the bank record BANK_0042 exactly in amount (25552.0) with a 1-day date difference (2025-08-02 vs 2025-08-03). The bank description 'RZRPY SETL 01/19' is a standard banking abbreviation for 'Razorpay settlement', matching 'Razorpay settlement batch #4042'. No better candidate or decoy exists."
+      }
+    }
+  ],
+  "final_status": "confirmed",
+  "final_decision": {
+    "matched_gateway_ids": [],
+    "confidence": "high",
+    "matched_ledger_ids": [
+      "LEDG_0042"
+    ],
+    "reasoning": "LEDG_0042 has an exact amount match of 25552.0 with the bank record. Furthermore, the bank description 'RZRPY SETL 01/19' is an abbreviated form of 'Razorpay settlement batch #4042' (LEDG_0042). Although description_similarity returned 0.0 due to token-level abbreviation differences (RZRPY vs Razorpay, SETL vs settlement), per Rule 2 and Rule 3, description mismatch due to naming conventions does not disqualify a match when the amount matches exactly and context aligns. Therefore, LEDG_0042 is selected as the matched ledger record.",
+    "status": "suggested_match"
+  },
+  "wall_clock_time_sec": 56.55
+}
