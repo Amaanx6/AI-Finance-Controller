@@ -68,33 +68,32 @@ GW_0041_1,2025-08-06,14834,Individual payout 2 in batch,
 GW_0041_2,2025-08-04,11105,Individual payout 3 in batch,
 GW_0041_3,2025-08-06,12844,Individual payout 4 in batch,
 GW_0042,2025-08-02,25552,Payment gateway payout,
-GW_0043,2025-08-05,10250,Payment gateway payout,
-GW_0044,2025-08-18,21135,Payment gateway payout,
-GW_0044_DECOY,2025-08-20,21201,Unrelated payout 44 (decoy),
-GW_0045,2025-08-12,39261,Payment gateway payout,
-GW_0045_DECOY,2025-08-11,39055,Unrelated payout 45 (decoy),
-GW_0046,2025-08-21,13577,Payment gateway payout,
-GW_0047,2025-08-03,41896,Payment gateway payout,
-GW_0047_DECOY,2025-08-03,41588,Unrelated payout 47 (decoy),
-GW_0048,2025-08-07,9508,Payment gateway payout,
-GW_0048_DECOY,2025-08-10,9571,Unrelated payout 48 (decoy),
-GW_0049,2025-08-21,24825,Payment gateway payout,
-GW_0049_DECOY,2025-08-17,25039,Unrelated payout 49 (decoy),
-GW_0050,2025-08-10,13800,Payment gateway payout,
-GW_0051,2025-08-12,18803,Payment gateway payout,
-GW_0051_DECOY,2025-08-10,18805,Unrelated payout 51 (decoy),
-GW_0052,2025-08-01,8296,Payout 52,REF00052
-GW_0053,2025-08-20,33985,Payout 53,REF00053
-GW_0054,2025-08-22,28931,Payout 54,REF00054
-GW_0055,2025-08-10,28497,Payout 55,REF00055
-GW_0056,2025-08-10,15210,Payout 56,REF00056
-GW_0057,2025-08-11,31972,Payout 57,REF00057
-GW_0058,2025-08-13,18022,Payout 58,REF00058
-GW_0059,2025-08-11,26531,Payout 59,REF00059
-GW_0060,2025-08-01,6803,Payout 60,REF00060
-GW_0061,2025-08-11,25339,Payout 61,REF00061
-GW_0063,2025-08-11,9585,Orphan gateway entry 63,
-GW_0064,2025-08-10,13167,Orphan gateway entry 64,
-GW_0065,2025-08-11,31764,Orphan gateway entry 65,
-GW_0067,2025-08-13,32554,Orphan gateway entry 67,
-GW_0068,2025-08-10,42296,Orphan gateway entry 68,
+GW_0043,2025-08-02,17178,Payment gateway payout,
+GW_0043_1,2025-08-04,17047,Consulting & Professional Services Retainer #5033,
+GW_0044,2025-08-03,43962,Payment gateway payout,
+GW_0044_1,2025-07-31,44344,Corporate Travel Booking - Flight & Hotel #6147,
+GW_0045,2025-08-14,22407,Payment gateway payout,
+GW_0045_1,2025-08-16,22387,Enterprise Cloud Infrastructure Hosting Invoice #2188,
+GW_0046,2025-08-21,35034,Payment gateway payout,
+GW_0047,2025-08-12,21009,Payment gateway payout,
+GW_0047_1,2025-08-15,21055,Enterprise Cloud Infrastructure Hosting Invoice #9666,
+GW_0048,2025-08-17,48769,Payment gateway payout,
+GW_0049,2025-08-20,23465,Payment gateway payout,
+GW_0050,2025-08-10,37016,Payment gateway payout,
+GW_0050_1,2025-08-06,37259,SaaS Software License Renewal - Vendor #1058,
+GW_0051,2025-08-22,13573,Payment gateway payout,
+GW_0051_1,2025-08-21,13587,Enterprise Cloud Infrastructure Hosting Invoice #1158,
+GW_0052,2025-08-03,9916,Payout 52,REF00052
+GW_0053,2025-08-13,7600,Payout 53,REF00053
+GW_0054,2025-08-05,45785,Payout 54,REF00054
+GW_0055,2025-08-14,26949,Payout 55,REF00055
+GW_0056,2025-08-05,19615,Payout 56,REF00056
+GW_0057,2025-08-13,31197,Payout 57,REF00057
+GW_0058,2025-08-12,39956,Payout 58,REF00058
+GW_0059,2025-08-21,12011,Payout 59,REF00059
+GW_0060,2025-08-10,42931,Payout 60,REF00060
+GW_0061,2025-08-06,49079,Payout 61,REF00061
+GW_0062,2025-08-10,13167,Orphan gateway entry 62,
+GW_0063,2025-08-11,31764,Orphan gateway entry 63,
+GW_0065,2025-08-13,32554,Orphan gateway entry 65,
+GW_0066,2025-08-10,42296,Orphan gateway entry 66,

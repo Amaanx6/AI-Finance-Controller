@@ -1,0 +1,51 @@
+{
+  "bank_record_id": "BANK_0028",
+  "trace": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_5928b844-aaf1-4578-9a73-087e42516d0a",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"candidates\":[{\"amount\":13808,\"record_id\":\"LEDG_0028_0\"},{\"amount\":3876,\"record_id\":\"LEDG_0028_1\"},{\"amount\":13169,\"record_id\":\"LEDG_0028_2\"},{\"amount\":10797,\"record_id\":\"LEDG_0028_3\"}],\"fee_tolerance_pct\":3,\"target_amount\":40504}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_5928b844-aaf1-4578-9a73-087e42516d0a",
+      "name": "sum_check",
+      "content": "{\"match_found\": true, \"count\": 1, \"total_valid_found\": 1, \"combinations_evaluated\": 11, \"combination_cap_hit\": false, \"matches\": [{\"candidate_ids\": [\"LEDG_0028_1\", \"LEDG_0028_3\", \"LEDG_0028_2\", \"LEDG_0028_0\"], \"candidate_sum\": 41650, \"target_amount\": 40504, \"fee_amount\": 1146, \"fee_percentage\": 2.75, \"subset_size\": 4, \"difference\": 1146}]}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_b865ce03-afba-4e03-bb08-270cb6d02010",
+          "type": "function",
+          "function": {
+            "name": "submit_final_decision",
+            "arguments": "{\"confidence\":\"high\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[\"LEDG_0028_0\",\"LEDG_0028_1\",\"LEDG_0028_2\",\"LEDG_0028_3\"],\"reasoning\":\"The sum_check tool found that the combination of LEDG_0028_0 (13808), LEDG_0028_1 (3876), LEDG_0028_2 (13169), and LEDG_0028_3 (10797) totals 41650, which exceeds the bank amount 40504 by 1146. This difference represents a 2.75% fee, which is within the allowed 3% tolerance. The candidate records are explicitly labeled as components of batch 28, matching the bank description \\\"Settlement batch 28\\\". No other candidate sets provide a comparable sum within fee tolerance. Therefore, we suggest these four ledger records as the match.\",\"status\":\"suggested_match\"}"
+          }
+        }
+      ]
+    }
+  ],
+  "final_decision": {
+    "confidence": "high",
+    "matched_gateway_ids": [],
+    "matched_ledger_ids": [
+      "LEDG_0028_0",
+      "LEDG_0028_1",
+      "LEDG_0028_2",
+      "LEDG_0028_3"
+    ],
+    "reasoning": "The sum_check tool found that the combination of LEDG_0028_0 (13808), LEDG_0028_1 (3876), LEDG_0028_2 (13169), and LEDG_0028_3 (10797) totals 41650, which exceeds the bank amount 40504 by 1146. This difference represents a 2.75% fee, which is within the allowed 3% tolerance. The candidate records are explicitly labeled as components of batch 28, matching the bank description \"Settlement batch 28\". No other candidate sets provide a comparable sum within fee tolerance. Therefore, we suggest these four ledger records as the match.",
+    "status": "suggested_match"
+  }
+}

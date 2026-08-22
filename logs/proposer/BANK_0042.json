@@ -1,0 +1,48 @@
+{
+  "bank_record_id": "BANK_0042",
+  "trace": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_bfa5ef96-3600-447c-be53-da2b9250bac1",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"RZRPY SETL 01/19\",\"desc_b\":\"Razorpay settlement batch #4042\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_bfa5ef96-3600-447c-be53-da2b9250bac1",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_59572816-87e7-4287-94a3-fc0c406e74ce",
+          "type": "function",
+          "function": {
+            "name": "submit_final_decision",
+            "arguments": "{\"confidence\":\"high\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[\"LEDG_0042\"],\"reasoning\":\"The bank transaction amount (25552.0) exactly matches the amount of LEDG_0042. No other candidate matches this amount exactly, making it the sole candidate within amount tolerance. Although description similarity between the bank description and LEDG_0042 is 0.0, the rules state that a single matching candidate should be accepted despite low description similarity when no competing rivals exist. Therefore, LEDG_0042 is the appropriate match.\",\"status\":\"suggested_match\"}"
+          }
+        }
+      ]
+    }
+  ],
+  "final_decision": {
+    "confidence": "high",
+    "matched_gateway_ids": [],
+    "matched_ledger_ids": [
+      "LEDG_0042"
+    ],
+    "reasoning": "The bank transaction amount (25552.0) exactly matches the amount of LEDG_0042. No other candidate matches this amount exactly, making it the sole candidate within amount tolerance. Although description similarity between the bank description and LEDG_0042 is 0.0, the rules state that a single matching candidate should be accepted despite low description similarity when no competing rivals exist. Therefore, LEDG_0042 is the appropriate match.",
+    "status": "suggested_match"
+  }
+}

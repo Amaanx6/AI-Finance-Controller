@@ -6,7 +6,7 @@
       "content": null,
       "tool_calls": [
         {
-          "id": "fc_145e6c3e-39d5-4f65-b265-626ed55bb4e9",
+          "id": "fc_3947a4e5-c839-4f60-98df-4c6232e8166e",
           "type": "function",
           "function": {
             "name": "sum_check",
@@ -17,7 +17,7 @@
     },
     {
       "role": "tool",
-      "tool_call_id": "fc_145e6c3e-39d5-4f65-b265-626ed55bb4e9",
+      "tool_call_id": "fc_3947a4e5-c839-4f60-98df-4c6232e8166e",
       "name": "sum_check",
       "content": "{\"match_found\": true, \"count\": 1, \"matches\": [{\"candidate_ids\": [\"L-201\", \"L-202\", \"L-203\"], \"candidate_sum\": 200, \"target_amount\": 195, \"fee_amount\": 5, \"fee_percentage\": 2.5, \"subset_size\": 3, \"difference\": 5}]}"
     },
@@ -26,25 +26,25 @@
       "content": null,
       "tool_calls": [
         {
-          "id": "fc_7fa6953f-0f24-4610-8326-2b385ced00b0",
+          "id": "fc_8ae43341-ebb0-4a05-ab7b-e49da3dc29a7",
           "type": "function",
           "function": {
             "name": "submit_final_decision",
-            "arguments": "{\"confidence\":\"medium\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[\"L-201\",\"L-202\",\"L-203\"],\"reasoning\":\"Sum_check identified a subset of ledger candidates (L-201, L-202, L-203) whose total of 200 exceeds the bank amount 195 by 5, which corresponds to a 2.5% fee\u2014within the allowed 3% tolerance. No other subsets fit the amount criteria. No description data is available for ledger records, so the decision relies on the amount match. This subset is therefore the most plausible match.\",\"status\":\"suggested_match\"}"
+            "arguments": "{\"confidence\":\"high\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[\"L-201\",\"L-202\",\"L-203\"],\"reasoning\":\"Sum check identified that records L-201 (50.0), L-202 (50.0) and L-203 (100.0) total 200.0, which is 5.0 above the bank amount 195.0. This 5.0 difference corresponds to a 2.5% fee, within the allowed 3% tolerance, indicating these three ledger entries likely represent the Stripe Settlement payout after processing fees. No description data is available for ledger records, but the amount match within fee tolerance is strong evidence. Therefore these three ledger IDs are suggested as the match.\",\"status\":\"suggested_match\"}"
           }
         }
       ]
     }
   ],
   "final_decision": {
-    "confidence": "medium",
+    "confidence": "high",
     "matched_gateway_ids": [],
     "matched_ledger_ids": [
       "L-201",
       "L-202",
       "L-203"
     ],
-    "reasoning": "Sum_check identified a subset of ledger candidates (L-201, L-202, L-203) whose total of 200 exceeds the bank amount 195 by 5, which corresponds to a 2.5% fee\u2014within the allowed 3% tolerance. No other subsets fit the amount criteria. No description data is available for ledger records, so the decision relies on the amount match. This subset is therefore the most plausible match.",
+    "reasoning": "Sum check identified that records L-201 (50.0), L-202 (50.0) and L-203 (100.0) total 200.0, which is 5.0 above the bank amount 195.0. This 5.0 difference corresponds to a 2.5% fee, within the allowed 3% tolerance, indicating these three ledger entries likely represent the Stripe Settlement payout after processing fees. No description data is available for ledger records, but the amount match within fee tolerance is strong evidence. Therefore these three ledger IDs are suggested as the match.",
     "status": "suggested_match"
   }
 }

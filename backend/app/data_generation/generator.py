@@ -138,15 +138,18 @@ class TransactionGenerator:
         return mappings
 
     def pattern_3_description_mismatch(self, count: int) -> List[Dict]:
-        """Description mismatches (~15%): same txn, no shared reference.
-
-        To induce ambiguity for an amount+date-only matcher, add a single
-        decoy record (unrelated transaction) in one of the other sources for
-        each transaction. The decoy has an amount within ±1% and date within
-        ±2-3 days of the true values, but is not part of the ground truth
-        mapping.
-        """
+        """Description mismatches (~15%): same txn, no shared reference."""
         mappings = []
+        decoy_descriptions = [
+            "Enterprise Cloud Infrastructure Hosting Invoice #{inv}",
+            "Corporate Travel Booking - Flight & Hotel #{inv}",
+            "SaaS Software License Renewal - Vendor #{inv}",
+            "Office Equipment & Maintenance Services #{inv}",
+            "Consulting & Professional Services Retainer #{inv}",
+            "Marketing & Media Campaign Payout #{inv}",
+            "Logistics & Freight Handling Charges #{inv}",
+        ]
+
         for i in range(count):
             txn_id = self.transaction_id_counter
             self.transaction_id_counter += 1
@@ -155,37 +158,35 @@ class TransactionGenerator:
             base_date_offset = random.randint(0, 20)
             date_str = self.generate_date(base_date_offset)
 
-            # Bank statement (one of the sources)
+            # Bank statement
             bank_id = f"BANK_{txn_id:04d}"
             bank_desc = f"RZRPY SETL {base_date_offset:02d}/19"
             self.add_record("bank_statement", bank_id, date_str, base_amount, bank_desc, "")
 
-            # Internal ledger (wildly different description, no ref)
+            # Internal ledger
             ledger_id = f"LEDG_{txn_id:04d}"
             ledger_date = self.generate_date(base_date_offset, day_variance=1)
             ledger_desc = f"Razorpay settlement batch #{4000 + txn_id}"
             self.add_record("internal_ledger", ledger_id, ledger_date, base_amount, ledger_desc, "")
 
-            # Gateway export (yet another description)
+            # Gateway export
             gateway_id = f"GW_{txn_id:04d}"
             gateway_date = self.generate_date(base_date_offset, day_variance=1)
             gateway_desc = "Payment gateway payout"
             self.add_record("gateway_export", gateway_id, gateway_date, base_amount, gateway_desc, "")
 
-            # Add a decoy in one of the other sources (randomly choose ledger or gateway)
+            # Add decoy record without "_DECOY" string
             decoy_source = random.choice(["internal_ledger", "gateway_export"])
-            # Decoy amount within ±1%
             decoy_amount = int(base_amount * (1 + random.uniform(-0.01, 0.01)))
-            # Decoy date within ±3 days
             decoy_date = self.generate_date(base_date_offset, day_variance=3)
+            inv_num = random.randint(1000, 9999)
+            decoy_desc = random.choice(decoy_descriptions).format(inv=inv_num)
 
             if decoy_source == "internal_ledger":
-                decoy_id = f"LEDG_{txn_id:04d}_DECOY"
-                decoy_desc = f"Unrelated vendor {txn_id} (decoy)"
+                decoy_id = f"LEDG_{txn_id:04d}_1"
                 self.add_record("internal_ledger", decoy_id, decoy_date, decoy_amount, decoy_desc, "")
             else:
-                decoy_id = f"GW_{txn_id:04d}_DECOY"
-                decoy_desc = f"Unrelated payout {txn_id} (decoy)"
+                decoy_id = f"GW_{txn_id:04d}_1"
                 self.add_record("gateway_export", decoy_id, decoy_date, decoy_amount, decoy_desc, "")
 
             mappings.append({
@@ -316,7 +317,7 @@ class TransactionGenerator:
 
         return all_mappings, stats
 
-    def save_csvs(self, output_dir: Path = None):
+    def save_csvs(self, output_dir: Path = None): # type: ignore
         """Save generated data to CSV files."""
         if output_dir is None:
             output_dir = Path(__file__).parent

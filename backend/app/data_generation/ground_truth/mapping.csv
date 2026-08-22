@@ -61,10 +61,10 @@ transaction_id,bank_record_id,ledger_record_ids,gateway_record_ids,pattern
 59,BANK_0059,LEDG_0059,GW_0059,near_miss_amount_date
 60,BANK_0060,LEDG_0060,GW_0060,near_miss_amount_date
 61,BANK_0061,LEDG_0061,GW_0061,near_miss_amount_date
-62,,LEDG_0062,,genuine_anomaly
+62,,,GW_0062,genuine_anomaly
 63,,,GW_0063,genuine_anomaly
-64,,,GW_0064,genuine_anomaly
+64,BANK_0064,,,genuine_anomaly
 65,,,GW_0065,genuine_anomaly
-66,BANK_0066,,,genuine_anomaly
-67,,,GW_0067,genuine_anomaly
-68,,,GW_0068,genuine_anomaly
+66,,,GW_0066,genuine_anomaly
+67,BANK_0067,,,genuine_anomaly
+68,,LEDG_0068,,genuine_anomaly
