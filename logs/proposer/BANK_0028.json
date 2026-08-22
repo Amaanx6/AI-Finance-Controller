@@ -1,36 +1,113 @@
 {
   "bank_record_id": "BANK_0028",
+  "provider": "gemini",
   "trace": [
     {
       "role": "assistant",
       "content": null,
       "tool_calls": [
         {
-          "id": "fc_5928b844-aaf1-4578-9a73-087e42516d0a",
+          "id": "function-call-1872460390613510058",
           "type": "function",
           "function": {
             "name": "sum_check",
-            "arguments": "{\"candidates\":[{\"amount\":13808,\"record_id\":\"LEDG_0028_0\"},{\"amount\":3876,\"record_id\":\"LEDG_0028_1\"},{\"amount\":13169,\"record_id\":\"LEDG_0028_2\"},{\"amount\":10797,\"record_id\":\"LEDG_0028_3\"}],\"fee_tolerance_pct\":3,\"target_amount\":40504}"
+            "arguments": "{\"target_amount\":40504,\"candidates\":[{\"amount\":38118,\"record_id\":\"LEDG_0004\"},{\"record_id\":\"LEDG_0010\",\"amount\":35108},{\"amount\":16215,\"record_id\":\"LEDG_0016\"},{\"record_id\":\"LEDG_0022\",\"amount\":41789},{\"amount\":33077,\"record_id\":\"LEDG_0023\"},{\"record_id\":\"LEDG_0024\",\"amount\":14065},{\"record_id\":\"LEDG_0027\",\"amount\":35674},{\"amount\":13808,\"record_id\":\"LEDG_0028_0\"},{\"amount\":3876,\"record_id\":\"LEDG_0028_1\"},{\"record_id\":\"LEDG_0028_2\",\"amount\":13169},{\"amount\":10797,\"record_id\":\"LEDG_0028_3\"},{\"record_id\":\"LEDG_0032_0\",\"amount\":9787},{\"record_id\":\"LEDG_0032_1\",\"amount\":11007},{\"amount\":4705,\"record_id\":\"LEDG_0032_2\"},{\"record_id\":\"LEDG_0032_3\",\"amount\":6342},{\"amount\":6562,\"record_id\":\"LEDG_0035_0\"},{\"record_id\":\"LEDG_0035_1\",\"amount\":12960},{\"record_id\":\"LEDG_0037_0\",\"amount\":8735},{\"record_id\":\"LEDG_0037_1\",\"amount\":9651},{\"amount\":13945,\"record_id\":\"LEDG_0037_2\"},{\"amount\":11016,\"record_id\":\"LEDG_0039_0\"},{\"record_id\":\"LEDG_0039_1\",\"amount\":3604},{\"record_id\":\"LEDG_0039_2\",\"amount\":2828},{\"amount\":35034,\"record_id\":\"LEDG_0046\"},{\"record_id\":\"LEDG_0046_1\",\"amount\":35038}]}"
+          }
+        },
+        {
+          "id": "function-call-1872460390613510035",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"Settlement batch 28\",\"desc_b\":\"Payment component 1 for batch 28\"}"
+          }
+        },
+        {
+          "id": "function-call-1872460390613510012",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"Settlement batch 28\",\"desc_b\":\"Payment component 2 for batch 28\"}"
+          }
+        },
+        {
+          "id": "function-call-1872460390613509989",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"Settlement batch 28\",\"desc_b\":\"Payment component 3 for batch 28\"}"
+          }
+        },
+        {
+          "id": "function-call-1872460390613509966",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"Settlement batch 28\",\"desc_b\":\"Payment component 4 for batch 28\"}"
           }
         }
       ]
     },
     {
       "role": "tool",
-      "tool_call_id": "fc_5928b844-aaf1-4578-9a73-087e42516d0a",
+      "tool_call_id": "function-call-1872460390613510058",
       "name": "sum_check",
-      "content": "{\"match_found\": true, \"count\": 1, \"total_valid_found\": 1, \"combinations_evaluated\": 11, \"combination_cap_hit\": false, \"matches\": [{\"candidate_ids\": [\"LEDG_0028_1\", \"LEDG_0028_3\", \"LEDG_0028_2\", \"LEDG_0028_0\"], \"candidate_sum\": 41650, \"target_amount\": 40504, \"fee_amount\": 1146, \"fee_percentage\": 2.75, \"subset_size\": 4, \"difference\": 1146}]}"
+      "content": "{\"match_found\": true, \"count\": 5, \"total_valid_found\": 226, \"combinations_evaluated\": 15250, \"combination_cap_hit\": false, \"matches\": [{\"candidate_ids\": [\"LEDG_0028_1\", \"LEDG_0037_1\", \"LEDG_0028_2\", \"LEDG_0028_0\"], \"candidate_sum\": 40504, \"target_amount\": 40504, \"fee_amount\": 0, \"fee_percentage\": 0.0, \"subset_size\": 4, \"difference\": 0, \"consistency_score\": 0.5, \"dominant_group\": null, \"outlier_ids\": [], \"consistency_note\": \"No batch/settlement identifier detected in descriptions \\u2014 consistency could not be verified.\"}, {\"candidate_ids\": [\"LEDG_0039_1\", \"LEDG_0032_0\", \"LEDG_0028_2\", \"LEDG_0037_2\"], \"candidate_sum\": 40505, \"target_amount\": 40504, \"fee_amount\": 1, \"fee_percentage\": 0.0, \"subset_size\": 4, \"difference\": 1, \"consistency_score\": 0.5, \"dominant_group\": null, \"outlier_ids\": [], \"consistency_note\": \"No batch/settlement identifier detected in descriptions \\u2014 consistency could not be verified.\"}, {\"candidate_ids\": [\"LEDG_0035_0\", \"LEDG_0032_0\", \"LEDG_0032_1\", \"LEDG_0028_2\"], \"candidate_sum\": 40525, \"target_amount\": 40504, \"fee_amount\": 21, \"fee_percentage\": 0.05, \"subset_size\": 4, \"difference\": 21, \"consistency_score\": 0.5, \"dominant_group\": null, \"outlier_ids\": [], \"consistency_note\": \"No batch/settlement identifier detected in descriptions \\u2014 consistency could not be verified.\"}, {\"candidate_ids\": [\"LEDG_0039_2\", \"LEDG_0028_3\", \"LEDG_0035_1\", \"LEDG_0037_2\"], \"candidate_sum\": 40530, \"target_amount\": 40504, \"fee_amount\": 26, \"fee_percentage\": 0.06, \"subset_size\": 4, \"difference\": 26, \"consistency_score\": 0.5, \"dominant_group\": null, \"outlier_ids\": [], \"consistency_note\": \"No batch/settlement identifier detected in descriptions \\u2014 consistency could not be verified.\"}, {\"candidate_ids\": [\"LEDG_0039_1\", \"LEDG_0028_3\", \"LEDG_0035_1\", \"LEDG_0028_2\"], \"candidate_sum\": 40530, \"target_amount\": 40504, \"fee_amount\": 26, \"fee_percentage\": 0.06, \"subset_size\": 4, \"difference\": 26, \"consistency_score\": 0.5, \"dominant_group\": null, \"outlier_ids\": [], \"consistency_note\": \"No batch/settlement identifier detected in descriptions \\u2014 consistency could not be verified.\"}]}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-1872460390613510035",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.5926, \"explanation\": \"Shared terms: [28, batch]; Shared reference numbers: [28]; Token overlap score: 0.59\"}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-1872460390613510012",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.5926, \"explanation\": \"Shared terms: [28, batch]; Shared reference numbers: [28]; Token overlap score: 0.59\"}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-1872460390613509989",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.5926, \"explanation\": \"Shared terms: [28, batch]; Shared reference numbers: [28]; Token overlap score: 0.59\"}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-1872460390613509966",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.5926, \"explanation\": \"Shared terms: [28, batch]; Shared reference numbers: [28]; Token overlap score: 0.59\"}"
     },
     {
       "role": "assistant",
       "content": null,
       "tool_calls": [
         {
-          "id": "fc_b865ce03-afba-4e03-bb08-270cb6d02010",
+          "id": "function-call-6603467211206599596",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_b\":\"Payment component 2 for batch 37\",\"desc_a\":\"Settlement batch 28\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-6603467211206599596",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.549, \"explanation\": \"Shared terms: [batch]; Token overlap score: 0.55\"}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "function-call-2106131611260806144",
           "type": "function",
           "function": {
             "name": "submit_final_decision",
-            "arguments": "{\"confidence\":\"high\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[\"LEDG_0028_0\",\"LEDG_0028_1\",\"LEDG_0028_2\",\"LEDG_0028_3\"],\"reasoning\":\"The sum_check tool found that the combination of LEDG_0028_0 (13808), LEDG_0028_1 (3876), LEDG_0028_2 (13169), and LEDG_0028_3 (10797) totals 41650, which exceeds the bank amount 40504 by 1146. This difference represents a 2.75% fee, which is within the allowed 3% tolerance. The candidate records are explicitly labeled as components of batch 28, matching the bank description \\\"Settlement batch 28\\\". No other candidate sets provide a comparable sum within fee tolerance. Therefore, we suggest these four ledger records as the match.\",\"status\":\"suggested_match\"}"
+            "arguments": "{\"confidence\":\"high\",\"reasoning\":\"The bank record is 'Settlement batch 28' for 40504.0. The candidates LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, and LEDG_0028_3 all refer to 'Payment component for batch 28', indicating strong descriptive similarity (all scoring ~0.59 against the bank description). Their combined sum is 13808 + 3876 + 13169 + 10797 = 41650. This sum is within 2.829% of the bank amount (40504.0), which is within the allowed 3% fee tolerance. Although a sum_check initially identified an exact amount match including LEDG_0037_1, that candidate referred to 'batch 37', which is a descriptive mismatch with the bank record's 'batch 28'. The chosen combination has both strong descriptive consistency and an amount within tolerance, making it a high-confidence match.\",\"matched_ledger_ids\":[\"LEDG_0028_0\",\"LEDG_0028_1\",\"LEDG_0028_2\",\"LEDG_0028_3\"],\"status\":\"suggested_match\"}"
           }
         }
       ]
@@ -38,14 +115,13 @@
   ],
   "final_decision": {
     "confidence": "high",
-    "matched_gateway_ids": [],
+    "reasoning": "The bank record is 'Settlement batch 28' for 40504.0. The candidates LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, and LEDG_0028_3 all refer to 'Payment component for batch 28', indicating strong descriptive similarity (all scoring ~0.59 against the bank description). Their combined sum is 13808 + 3876 + 13169 + 10797 = 41650. This sum is within 2.829% of the bank amount (40504.0), which is within the allowed 3% fee tolerance. Although a sum_check initially identified an exact amount match including LEDG_0037_1, that candidate referred to 'batch 37', which is a descriptive mismatch with the bank record's 'batch 28'. The chosen combination has both strong descriptive consistency and an amount within tolerance, making it a high-confidence match.",
     "matched_ledger_ids": [
       "LEDG_0028_0",
       "LEDG_0028_1",
       "LEDG_0028_2",
       "LEDG_0028_3"
     ],
-    "reasoning": "The sum_check tool found that the combination of LEDG_0028_0 (13808), LEDG_0028_1 (3876), LEDG_0028_2 (13169), and LEDG_0028_3 (10797) totals 41650, which exceeds the bank amount 40504 by 1146. This difference represents a 2.75% fee, which is within the allowed 3% tolerance. The candidate records are explicitly labeled as components of batch 28, matching the bank description \"Settlement batch 28\". No other candidate sets provide a comparable sum within fee tolerance. Therefore, we suggest these four ledger records as the match.",
     "status": "suggested_match"
   }
 }

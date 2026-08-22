@@ -1,12 +1,21 @@
 {
   "bank_record_id": "BANK_0042",
+  "provider": "gemini",
   "trace": [
     {
       "role": "assistant",
       "content": null,
       "tool_calls": [
         {
-          "id": "fc_bfa5ef96-3600-447c-be53-da2b9250bac1",
+          "id": "function-call-3332322504167359985",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"target_amount\":25552,\"fee_tolerance_pct\":3,\"candidates\":[{\"amount\":25552,\"record_id\":\"LEDG_0042\"}]}"
+          }
+        },
+        {
+          "id": "function-call-3332322504167359348",
           "type": "function",
           "function": {
             "name": "description_similarity",
@@ -17,7 +26,13 @@
     },
     {
       "role": "tool",
-      "tool_call_id": "fc_bfa5ef96-3600-447c-be53-da2b9250bac1",
+      "tool_call_id": "function-call-3332322504167359985",
+      "name": "sum_check",
+      "content": "{\"match_found\": false, \"count\": 0, \"total_valid_found\": 0, \"combinations_evaluated\": 0, \"combination_cap_hit\": false, \"matches\": []}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-3332322504167359348",
       "name": "description_similarity",
       "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
     },
@@ -26,23 +41,135 @@
       "content": null,
       "tool_calls": [
         {
-          "id": "fc_59572816-87e7-4287-94a3-fc0c406e74ce",
+          "id": "function-call-7987457610497409831",
           "type": "function",
           "function": {
-            "name": "submit_final_decision",
-            "arguments": "{\"confidence\":\"high\",\"matched_gateway_ids\":[],\"matched_ledger_ids\":[\"LEDG_0042\"],\"reasoning\":\"The bank transaction amount (25552.0) exactly matches the amount of LEDG_0042. No other candidate matches this amount exactly, making it the sole candidate within amount tolerance. Although description similarity between the bank description and LEDG_0042 is 0.0, the rules state that a single matching candidate should be accepted despite low description similarity when no competing rivals exist. Therefore, LEDG_0042 is the appropriate match.\",\"status\":\"suggested_match\"}"
+            "name": "description_similarity",
+            "arguments": "{\"desc_b\":\"Vendor payment 20\",\"desc_a\":\"RZRPY SETL 01/19\"}"
+          }
+        },
+        {
+          "id": "function-call-7987457610497412076",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_b\":\"Logistics & Freight Handling Charges #2312\",\"desc_a\":\"RZRPY SETL 01/19\"}"
           }
         }
       ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-7987457610497409831",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-7987457610497412076",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "function-call-4086847597876455695",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"target_amount\":25552,\"fee_tolerance_pct\":3,\"candidates\":[{\"amount\":25552,\"record_id\":\"LEDG_0042\"}]}"
+          }
+        },
+        {
+          "id": "function-call-4086847597876454414",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"candidates\":[{\"amount\":25622,\"record_id\":\"LEDG_0020\"}],\"fee_tolerance_pct\":3,\"target_amount\":25552}"
+          }
+        },
+        {
+          "id": "function-call-4086847597876457229",
+          "type": "function",
+          "function": {
+            "name": "sum_check",
+            "arguments": "{\"target_amount\":25552,\"fee_tolerance_pct\":3,\"candidates\":[{\"record_id\":\"LEDG_0042_1\",\"amount\":25325}]}"
+          }
+        },
+        {
+          "id": "function-call-4086847597876455948",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"RZRPY SETL 01/19\",\"desc_b\":\"Razorpay settlement batch #4042\"}"
+          }
+        },
+        {
+          "id": "function-call-4086847597876454667",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"RZRPY SETL 01/19\",\"desc_b\":\"Vendor payment 20\"}"
+          }
+        },
+        {
+          "id": "function-call-4086847597876453386",
+          "type": "function",
+          "function": {
+            "name": "description_similarity",
+            "arguments": "{\"desc_a\":\"RZRPY SETL 01/19\",\"desc_b\":\"Logistics & Freight Handling Charges #2312\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-4086847597876455695",
+      "name": "sum_check",
+      "content": "{\"match_found\": false, \"count\": 0, \"total_valid_found\": 0, \"combinations_evaluated\": 0, \"combination_cap_hit\": false, \"matches\": []}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-4086847597876454414",
+      "name": "sum_check",
+      "content": "{\"match_found\": false, \"count\": 0, \"total_valid_found\": 0, \"combinations_evaluated\": 0, \"combination_cap_hit\": false, \"matches\": []}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-4086847597876457229",
+      "name": "sum_check",
+      "content": "{\"match_found\": false, \"count\": 0, \"total_valid_found\": 0, \"combinations_evaluated\": 0, \"combination_cap_hit\": false, \"matches\": []}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-4086847597876455948",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-4086847597876454667",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "function-call-4086847597876453386",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
+    },
+    {
+      "role": "assistant",
+      "content": null
     }
   ],
   "final_decision": {
-    "confidence": "high",
+    "status": "flagged",
+    "matched_ledger_ids": [],
     "matched_gateway_ids": [],
-    "matched_ledger_ids": [
-      "LEDG_0042"
-    ],
-    "reasoning": "The bank transaction amount (25552.0) exactly matches the amount of LEDG_0042. No other candidate matches this amount exactly, making it the sole candidate within amount tolerance. Although description similarity between the bank description and LEDG_0042 is 0.0, the rules state that a single matching candidate should be accepted despite low description similarity when no competing rivals exist. Therefore, LEDG_0042 is the appropriate match.",
-    "status": "suggested_match"
+    "reasoning": "Model failed to produce a decision after reaching max turns.",
+    "confidence": "low"
   }
 }

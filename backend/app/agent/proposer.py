@@ -10,25 +10,42 @@ from typing import Dict, Any, List, Optional, Callable, cast
 from groq import Groq
 from groq.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
+# Gemini via its OpenAI-compatible endpoint (https://ai.google.dev/gemini-api/docs/openai).
+# WHY THIS OVER google-genai SDK: google-genai has its own tool schema
+# (types.FunctionDeclaration / types.Tool) and its own response shape
+# (response.candidates[0].content.parts[*].function_call), which would mean
+# forking AGENT_TOOLS into two formats and forking all of the message/tool_call
+# parsing logic in run_proposer(). The OpenAI-compat endpoint accepts the exact
+# same `tools=[{"type":"function","function":{...}}]` schema Groq uses and
+# returns the exact same `response.choices[0].message.tool_calls[i].function.name
+# / .arguments` shape (since Groq's client is also OpenAI-compatible). That means
+# AGENT_TOOLS, msg_dict construction, and all tool-call-parsing code below is
+# untouched — only client construction and the retry/throttle wrapper differ.
+from openai import OpenAI as GeminiOpenAICompatClient
+
 from backend.app.agent.prompts import PROPOSER_SYSTEM_PROMPT
 from backend.app.agent.tools import sum_check, description_similarity
+from backend.app.agent import config
 
 load_dotenv()
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"), max_retries=0)
-MODEL_NAME = "openai/gpt-oss-120b"
+groq_client = Groq(api_key=config.GROQ_API_KEY, max_retries=0)
+gemini_client = GeminiOpenAICompatClient(
+    api_key=config.GEMINI_API_KEY,
+    base_url=config.GEMINI_BASE_URL,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOG_DIR = BASE_DIR / "logs" / "proposer"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-TPM_BUDGET = 7000
-MAX_TURNS = 4
+MAX_TURNS = config.MAX_TURNS
 
 # SINGLE SOURCE OF TRUTH FOR MATCH TOLERANCE
 MATCH_TOLERANCE_PCT = 3.0
 TIGHT_MATCH_THRESHOLD = 0.005  # 0.5%
 
+# AGENT_TOOLS, business logic below: EXACTLY the same regardless of provider.
 AGENT_TOOLS: List[ChatCompletionToolParam] = [
     {
         "type": "function",
@@ -101,23 +118,50 @@ AVAILABLE_FUNCTIONS: Dict[str, Callable[..., Any]] = {
 
 RATE_LIMIT_EXHAUSTED = "RATE_LIMIT_EXHAUSTED"
 
-_tokens_this_minute = 0
-_minute_start = time.time()
+# ---------------------------------------------------------------------------
+# Groq throttling: unchanged — Groq's free tier is a hard TPM (tokens/minute)
+# ceiling, so we track cumulative usage tokens per rolling 60s window.
+# ---------------------------------------------------------------------------
+_groq_tokens_this_minute = 0
+_groq_minute_start = time.time()
 
-def _track_and_throttle(usage_tokens: int) -> None:
-    global _tokens_this_minute, _minute_start
+def _groq_track_and_throttle(usage_tokens: int) -> None:
+    global _groq_tokens_this_minute, _groq_minute_start
     now = time.time()
-    if now - _minute_start >= 60:
-        _tokens_this_minute = 0
-        _minute_start = now
-    _tokens_this_minute += usage_tokens
-    if _tokens_this_minute > TPM_BUDGET:
-        wait = max(60 - (now - _minute_start), 0)
+    if now - _groq_minute_start >= 60:
+        _groq_tokens_this_minute = 0
+        _groq_minute_start = now
+    _groq_tokens_this_minute += usage_tokens
+    if _groq_tokens_this_minute > config.GROQ_TPM_BUDGET:
+        wait = max(60 - (now - _groq_minute_start), 0)
         if wait > 0:
-            print(f"[~] Approaching TPM budget ({_tokens_this_minute}). Pausing {wait:.1f}s...")
+            print(f"[~] Groq: approaching TPM budget ({_groq_tokens_this_minute}). Pausing {wait:.1f}s...")
             time.sleep(wait)
-        _tokens_this_minute = 0
-        _minute_start = time.time()
+        _groq_tokens_this_minute = 0
+        _groq_minute_start = time.time()
+
+# ---------------------------------------------------------------------------
+# Gemini throttling: the free tier is bounded by requests-per-minute (RPM) and
+# requests-per-day, not a strict token meter — per-request token headroom is
+# far higher than Groq's, so counting tokens the way Groq's throttle does
+# would be forcing Gemini into a shape that doesn't match its actual limit.
+# Instead we throttle on request cadence within a rolling 60s window.
+# ---------------------------------------------------------------------------
+_gemini_request_timestamps: List[float] = []
+
+def _gemini_track_and_throttle() -> None:
+    global _gemini_request_timestamps
+    now = time.time()
+    _gemini_request_timestamps = [t for t in _gemini_request_timestamps if now - t < 60]
+    if len(_gemini_request_timestamps) >= config.GEMINI_RPM_BUDGET:
+        oldest = _gemini_request_timestamps[0]
+        wait = max(60 - (now - oldest), 0)
+        if wait > 0:
+            print(f"[~] Gemini: at RPM budget ({config.GEMINI_RPM_BUDGET}/min). Pausing {wait:.1f}s...")
+            time.sleep(wait)
+        now = time.time()
+        _gemini_request_timestamps = [t for t in _gemini_request_timestamps if now - t < 60]
+    _gemini_request_timestamps.append(time.time())
 
 def _extract_retry_after(exc: Exception) -> Optional[float]:
     response = getattr(exc, "response", None)
@@ -137,11 +181,11 @@ def get_candidate_pool(
     bank_record: Dict[str, Any],
     all_ledger: List[Dict[str, Any]],
     date_window_days: int = 5,
-    max_candidates: int = 25  # Capped at 25 to keep the prompt payload efficient
+    max_candidates: int = 25
 ) -> List[Dict[str, Any]]:
     target_amount = float(bank_record["amount"])
     target_date_str = bank_record.get("date", "")
-    
+
     date_filtered: List[Dict[str, Any]] = []
     for l in all_ledger:
         date_diff_days = 0
@@ -152,47 +196,45 @@ def get_candidate_pool(
                 date_diff_days = abs((d1 - d2).days)
             except ValueError:
                 date_diff_days = 0
-        
+
         if date_diff_days <= date_window_days:
             date_filtered.append(l)
 
-    # STRICT 0.5% THRESHOLD: Check if an exact/near-exact match exists.
     has_tight_match = any(
         abs(float(l["amount"]) - target_amount) / max(target_amount, 1.0) <= TIGHT_MATCH_THRESHOLD
         for l in date_filtered
     )
 
     if has_tight_match:
-        # A tight 1:1 match exists. Return it along with close decoys within 10%.
         direct_candidates = [
             l for l in date_filtered
             if abs(float(l["amount"]) - target_amount) / max(target_amount, 1.0) <= 0.10
         ]
         return sorted(direct_candidates, key=lambda l: abs(float(l["amount"]) - target_amount))[:max_candidates]
     else:
-        # No tight match. Pull ALL ledger records in window up to target_amount * 1.05.
         component_candidates = [
             l for l in date_filtered
             if float(l["amount"]) <= target_amount * 1.05
         ]
         return component_candidates[:max_candidates]
 
-def call_groq_with_retry(messages: List[ChatCompletionMessageParam], max_retries: int = 5) -> Any:
+
+def _call_groq(messages: List[ChatCompletionMessageParam], max_retries: int) -> Any:
     delay = 2.0
     last_exc: Optional[Exception] = None
 
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
+            response = groq_client.chat.completions.create(
+                model=config.GROQ_MODEL_NAME,
                 messages=messages,
                 tools=AGENT_TOOLS,
                 tool_choice="auto",
-                max_tokens=1024  # <-- PREVENTS GROQ TPM 413 EXPLOSIONS
+                max_tokens=config.GROQ_MAX_TOKENS  # <-- PREVENTS GROQ TPM 413 EXPLOSIONS
             )
             usage = getattr(response, "usage", None)
             if usage is not None:
-                _track_and_throttle(getattr(usage, "total_tokens", 0))
+                _groq_track_and_throttle(getattr(usage, "total_tokens", 0))
             return response
         except Exception as e:
             err_msg = str(e).lower()
@@ -202,13 +244,58 @@ def call_groq_with_retry(messages: List[ChatCompletionMessageParam], max_retries
                     raise RuntimeError(RATE_LIMIT_EXHAUSTED) from e
                 retry_after = _extract_retry_after(e)
                 wait = retry_after if retry_after is not None else delay
-                print(f"[!] Rate limited (429). Waiting {wait:.1f}s (attempt {attempt + 1}/{max_retries})...")
+                print(f"[!] Groq rate limited (429). Waiting {wait:.1f}s (attempt {attempt + 1}/{max_retries})...")
                 time.sleep(wait)
                 delay *= 2.0
             else:
                 raise
 
     raise RuntimeError(RATE_LIMIT_EXHAUSTED) from last_exc
+
+
+def _call_gemini(messages: List[ChatCompletionMessageParam], max_retries: int) -> Any:
+    delay = 2.0
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(max_retries):
+        try:
+            _gemini_track_and_throttle()
+            response = gemini_client.chat.completions.create(
+                model=config.GEMINI_MODEL_NAME,
+                messages=messages,
+                tools=AGENT_TOOLS,
+                tool_choice="auto",
+                max_tokens=config.GEMINI_MAX_TOKENS
+            )
+            return response
+        except Exception as e:
+            err_msg = str(e).lower()
+            last_exc = e
+            # Gemini's OpenAI-compat layer surfaces quota errors as 429 too,
+            # but without Groq's Retry-After header — it uses a RetryInfo
+            # detail in the error body instead, which the openai SDK doesn't
+            # parse for us, so we fall back to plain exponential backoff.
+            if "429" in err_msg or "resource_exhausted" in err_msg or "quota" in err_msg:
+                if attempt == max_retries - 1:
+                    raise RuntimeError(RATE_LIMIT_EXHAUSTED) from e
+                print(f"[!] Gemini rate limited. Waiting {delay:.1f}s (attempt {attempt + 1}/{max_retries})...")
+                time.sleep(delay)
+                delay *= 2.0
+            else:
+                raise
+
+    raise RuntimeError(RATE_LIMIT_EXHAUSTED) from last_exc
+
+
+def call_llm_with_retry(messages: List[ChatCompletionMessageParam], max_retries: int = 5) -> Any:
+    """Provider-agnostic dispatch. Response shape is identical either way
+    (both are OpenAI-compatible chat.completions responses), so every caller
+    below just does response.choices[0].message like before — no branching
+    needed past this function."""
+    if config.PROVIDER == "gemini":
+        return _call_gemini(messages, max_retries)
+    return _call_groq(messages, max_retries)
+
 
 def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
     record_id = bank_record.get("record_id", "UNKNOWN")
@@ -254,6 +341,7 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
         with open(log_file, "w") as f:
             json.dump({
                 "bank_record_id": record_id,
+                "provider": config.PROVIDER,
                 "trace": trace_log,
                 "final_decision": decision
             }, f, indent=2)
@@ -272,7 +360,7 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
                 }
                 break
 
-            response = call_groq_with_retry(messages)
+            response = call_llm_with_retry(messages)
             message = response.choices[0].message
 
             msg_dict: Dict[str, Any] = {"role": "assistant", "content": message.content}
@@ -289,18 +377,42 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
             trace_log.append(msg_dict)
 
             if not message.tool_calls:
+                content_str = (message.content or "").strip()
+                if not content_str:
+                    # Retry limit enforcement for empty responses
+                    if turn_count < MAX_TURNS:
+                        print("  [!] Model produced an empty response without tool calls. Forcing follow-up reminder...")
+                        messages.append(cast(ChatCompletionMessageParam, {
+                            "role": "user",
+                            "content": "You returned an empty response. You must call the `submit_final_decision` tool with your conclusions based on the results you have gathered. Do not return an empty message."
+                        }))
+                        continue
+                    else:
+                        final_decision = {
+                            "status": "flagged",
+                            "matched_ledger_ids": [],
+                            "matched_gateway_ids": [],
+                            "reasoning": "Model failed to produce a decision after reaching max turns.",
+                            "confidence": "low"
+                        }
+                        break
+
                 try:
-                    raw_content = message.content or "{}"
-                    final_decision = json.loads(raw_content)
+                    final_decision = json.loads(content_str)
                 except Exception:
-                    final_decision = {"error": "No tool call issued", "raw_content": message.content}
+                    final_decision = {
+                        "status": "flagged",
+                        "matched_ledger_ids": [],
+                        "matched_gateway_ids": [],
+                        "reasoning": "Model produced invalid non-JSON output without tool calls.",
+                        "confidence": "low"
+                    }
                 break
 
             reached_final = False
             for tool_call in message.tool_calls:
                 function_name = tool_call.function.name
-                
-                # --- LOGGING TOOL INVOCATIONS ---
+
                 if function_name == "sum_check":
                     try:
                         args_dict = json.loads(tool_call.function.arguments or "{}")
@@ -318,7 +430,6 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
                         print(f"  Comparing: '{args_dict.get('desc_a')}' vs '{args_dict.get('desc_b')}'")
                     except:
                         pass
-                # ---------------------------------
 
                 if function_name == "submit_final_decision":
                     try:
@@ -394,6 +505,8 @@ if __name__ == "__main__":
 
         if not test_cases:
             test_cases = bank_records[:2]
+
+        print(f"[i] Running with PROVIDER={config.PROVIDER}")
 
         for idx, target in enumerate(test_cases, 1):
             candidates = get_candidate_pool(target, all_ledger)
