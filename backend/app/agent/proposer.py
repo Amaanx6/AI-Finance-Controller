@@ -1,27 +1,19 @@
 from dotenv import load_dotenv
+import re
 import os
 import time
 import json
 import csv
+import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable, cast
 
-from groq import Groq
+from groq import AsyncGroq
 from groq.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
-# Gemini via its OpenAI-compatible endpoint (https://ai.google.dev/gemini-api/docs/openai).
-# WHY THIS OVER google-genai SDK: google-genai has its own tool schema
-# (types.FunctionDeclaration / types.Tool) and its own response shape
-# (response.candidates[0].content.parts[*].function_call), which would mean
-# forking AGENT_TOOLS into two formats and forking all of the message/tool_call
-# parsing logic in run_proposer(). The OpenAI-compat endpoint accepts the exact
-# same `tools=[{"type":"function","function":{...}}]` schema Groq uses and
-# returns the exact same `response.choices[0].message.tool_calls[i].function.name
-# / .arguments` shape (since Groq's client is also OpenAI-compatible). That means
-# AGENT_TOOLS, msg_dict construction, and all tool-call-parsing code below is
-# untouched — only client construction and the retry/throttle wrapper differ.
-from openai import OpenAI as GeminiOpenAICompatClient
+# Gemini via its OpenAI-compatible endpoint
+from openai import AsyncOpenAI as AsyncGeminiClient
 
 from backend.app.agent.prompts import PROPOSER_SYSTEM_PROMPT
 from backend.app.agent.tools import sum_check, description_similarity
@@ -29,8 +21,8 @@ from backend.app.agent import config
 
 load_dotenv()
 
-groq_client = Groq(api_key=config.GROQ_API_KEY, max_retries=0)
-gemini_client = GeminiOpenAICompatClient(
+groq_client = AsyncGroq(api_key=config.GROQ_API_KEY, max_retries=0)
+gemini_client = AsyncGeminiClient(
     api_key=config.GEMINI_API_KEY,
     base_url=config.GEMINI_BASE_URL,
 )
@@ -56,20 +48,9 @@ AGENT_TOOLS: List[ChatCompletionToolParam] = [
                 "type": "object",
                 "properties": {
                     "target_amount": {"type": "number"},
-                    "candidates": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "record_id": {"type": "string"},
-                                "amount": {"type": "number"}
-                            },
-                            "required": ["record_id", "amount"]
-                        }
-                    },
                     "fee_tolerance_pct": {"type": "number", "default": MATCH_TOLERANCE_PCT}
                 },
-                "required": ["target_amount", "candidates"]
+                "required": ["target_amount"]
             }
         }
     },
@@ -119,37 +100,36 @@ AVAILABLE_FUNCTIONS: Dict[str, Callable[..., Any]] = {
 RATE_LIMIT_EXHAUSTED = "RATE_LIMIT_EXHAUSTED"
 
 # ---------------------------------------------------------------------------
-# Groq throttling: unchanged — Groq's free tier is a hard TPM (tokens/minute)
-# ceiling, so we track cumulative usage tokens per rolling 60s window.
+# Proactive Groq Token Bucket Throttling
 # ---------------------------------------------------------------------------
 _groq_tokens_this_minute = 0
 _groq_minute_start = time.time()
+_groq_lock = asyncio.Lock()
 
-def _groq_track_and_throttle(usage_tokens: int) -> None:
+async def _proactive_groq_throttle(estimated_tokens: int = 1500) -> None:
     global _groq_tokens_this_minute, _groq_minute_start
-    now = time.time()
-    if now - _groq_minute_start >= 60:
-        _groq_tokens_this_minute = 0
-        _groq_minute_start = now
-    _groq_tokens_this_minute += usage_tokens
-    if _groq_tokens_this_minute > config.GROQ_TPM_BUDGET:
-        wait = max(60 - (now - _groq_minute_start), 0)
-        if wait > 0:
-            print(f"[~] Groq: approaching TPM budget ({_groq_tokens_this_minute}). Pausing {wait:.1f}s...")
-            time.sleep(wait)
-        _groq_tokens_this_minute = 0
-        _groq_minute_start = time.time()
+    async with _groq_lock:
+        now = time.time()
+        if now - _groq_minute_start >= 60:
+            _groq_tokens_this_minute = 0
+            _groq_minute_start = now
+            
+        if _groq_tokens_this_minute + estimated_tokens > config.GROQ_TPM_BUDGET:
+            wait = 60 - (now - _groq_minute_start)
+            if wait > 0:
+                print(f"[~] Proactive Pacing: Budget near limit ({_groq_tokens_this_minute} TPM). Pacing request for {wait:.1f}s...")
+                await asyncio.sleep(wait)
+            _groq_tokens_this_minute = 0
+            _groq_minute_start = time.time()
+            
+        _groq_tokens_this_minute += estimated_tokens
 
 # ---------------------------------------------------------------------------
-# Gemini throttling: the free tier is bounded by requests-per-minute (RPM) and
-# requests-per-day, not a strict token meter — per-request token headroom is
-# far higher than Groq's, so counting tokens the way Groq's throttle does
-# would be forcing Gemini into a shape that doesn't match its actual limit.
-# Instead we throttle on request cadence within a rolling 60s window.
+# Gemini throttling
 # ---------------------------------------------------------------------------
 _gemini_request_timestamps: List[float] = []
 
-def _gemini_track_and_throttle() -> None:
+async def _gemini_track_and_throttle() -> None:
     global _gemini_request_timestamps
     now = time.time()
     _gemini_request_timestamps = [t for t in _gemini_request_timestamps if now - t < 60]
@@ -158,7 +138,7 @@ def _gemini_track_and_throttle() -> None:
         wait = max(60 - (now - oldest), 0)
         if wait > 0:
             print(f"[~] Gemini: at RPM budget ({config.GEMINI_RPM_BUDGET}/min). Pausing {wait:.1f}s...")
-            time.sleep(wait)
+            await asyncio.sleep(wait)
         now = time.time()
         _gemini_request_timestamps = [t for t in _gemini_request_timestamps if now - t < 60]
     _gemini_request_timestamps.append(time.time())
@@ -219,33 +199,100 @@ def get_candidate_pool(
         return component_candidates[:max_candidates]
 
 
-def _call_groq(messages: List[ChatCompletionMessageParam], max_retries: int) -> Any:
+def _extract_invalid_tool_name(exc: Exception) -> Optional[str]:
+    """
+    Groq validates tool calls server-side. When the model (specifically
+    openai/gpt-oss-120b, which uses OpenAI's Harmony format internally and
+    can leak its 'commentary' scratch-reasoning channel as a fake tool call)
+    emits a call to a tool that isn't registered, Groq rejects the WHOLE
+    request with a 400 BEFORE any message is ever returned to us. This means
+    it can only be caught here, at the API-call boundary — by the time a
+    response object exists to inspect message.tool_calls, this failure mode
+    has already either happened (request rejected) or not (request succeeded).
+    """
+    msg = str(exc)
+    match = re.search(r"attempted to call tool '([^']+)' which was not in request\.tools", msg)
+    if match:
+        return match.group(1)
+    return None
+
+
+async def _call_groq(
+    messages: List[ChatCompletionMessageParam],
+    max_retries: int,
+    temperature: float,
+    tools: List[ChatCompletionToolParam],
+) -> Any:
     delay = 2.0
     last_exc: Optional[Exception] = None
+    hallucination_corrections = 0
+    MAX_HALLUCINATION_CORRECTIONS = 3  # separate budget from rate-limit retries
 
     for attempt in range(max_retries):
         try:
-            response = groq_client.chat.completions.create(
+            await _proactive_groq_throttle(estimated_tokens=1500)
+
+            response = await groq_client.chat.completions.create(
                 model=config.GROQ_MODEL_NAME,
                 messages=messages,
-                tools=AGENT_TOOLS,
+                tools=tools,
                 tool_choice="auto",
-                max_tokens=config.GROQ_MAX_TOKENS  # <-- PREVENTS GROQ TPM 413 EXPLOSIONS
+                temperature=temperature,
+                max_tokens=config.GROQ_MAX_TOKENS
             )
+
             usage = getattr(response, "usage", None)
             if usage is not None:
-                _groq_track_and_throttle(getattr(usage, "total_tokens", 0))
+                actual_tokens = getattr(usage, "total_tokens", 0)
+                global _groq_tokens_this_minute
+                async with _groq_lock:
+                    _groq_tokens_this_minute = max(0, _groq_tokens_this_minute - 1500 + actual_tokens)
+
             return response
+
         except Exception as e:
-            err_msg = str(e).lower()
             last_exc = e
+
+            # --- Handle the actual failure point: server-side tool validation ---
+            invalid_tool = _extract_invalid_tool_name(e)
+            if invalid_tool is not None:
+                hallucination_corrections += 1
+                valid_names = ", ".join(t["function"]["name"] for t in tools)
+                print(
+                    f"[!] Groq rejected a call to invalid tool '{invalid_tool}' "
+                    f"(correction {hallucination_corrections}/{MAX_HALLUCINATION_CORRECTIONS})."
+                )
+                if hallucination_corrections > MAX_HALLUCINATION_CORRECTIONS:
+                    raise RuntimeError(
+                        f"TOOL_HALLUCINATION_EXHAUSTED: repeatedly attempted invalid tool '{invalid_tool}'"
+                    ) from e
+
+                # No assistant message was ever returned for this failed call,
+                # so there's nothing to append except a plain corrective note —
+                # this is intentionally NOT a "tool" role message, since there's
+                # no preceding tool_call_id in the conversation to respond to.
+                messages.append(cast(ChatCompletionMessageParam, {
+                    "role": "user",
+                    "content": (
+                        f"Your previous response attempted to call a tool named "
+                        f"'{invalid_tool}', which does not exist. You may ONLY call "
+                        f"these tools: {valid_names}. Retry using only a valid tool, "
+                        f"or call the decision tool now if you already have enough "
+                        f"information to conclude."
+                    )
+                }))
+                await asyncio.sleep(1.0)
+                continue
+
+            # --- Existing rate-limit handling, unchanged ---
+            err_msg = str(e).lower()
             if "429" in err_msg or "too many requests" in err_msg:
                 if attempt == max_retries - 1:
                     raise RuntimeError(RATE_LIMIT_EXHAUSTED) from e
                 retry_after = _extract_retry_after(e)
                 wait = retry_after if retry_after is not None else delay
                 print(f"[!] Groq rate limited (429). Waiting {wait:.1f}s (attempt {attempt + 1}/{max_retries})...")
-                time.sleep(wait)
+                await asyncio.sleep(wait)
                 delay *= 2.0
             else:
                 raise
@@ -253,33 +300,30 @@ def _call_groq(messages: List[ChatCompletionMessageParam], max_retries: int) -> 
     raise RuntimeError(RATE_LIMIT_EXHAUSTED) from last_exc
 
 
-def _call_gemini(messages: List[ChatCompletionMessageParam], max_retries: int) -> Any:
-    delay = 2.0
+async def _call_gemini(messages: List[ChatCompletionMessageParam], max_retries: int, temperature: float, tools: List[ChatCompletionToolParam]) -> Any:
+    delay = 4.0
     last_exc: Optional[Exception] = None
 
     for attempt in range(max_retries):
         try:
-            _gemini_track_and_throttle()
-            response = gemini_client.chat.completions.create(
+            await _gemini_track_and_throttle()
+            response = await gemini_client.chat.completions.create(
                 model=config.GEMINI_MODEL_NAME,
                 messages=messages, # type: ignore[arg-type]
-                tools=AGENT_TOOLS, # type: ignore[arg-type]
+                tools=tools, # type: ignore[arg-type]
                 tool_choice="auto",
+                temperature=temperature,
                 max_tokens=config.GEMINI_MAX_TOKENS
             )
             return response
         except Exception as e:
             err_msg = str(e).lower()
             last_exc = e
-            # Gemini's OpenAI-compat layer surfaces quota errors as 429 too,
-            # but without Groq's Retry-After header — it uses a RetryInfo
-            # detail in the error body instead, which the openai SDK doesn't
-            # parse for us, so we fall back to plain exponential backoff.
             if "429" in err_msg or "resource_exhausted" in err_msg or "quota" in err_msg:
                 if attempt == max_retries - 1:
                     raise RuntimeError(RATE_LIMIT_EXHAUSTED) from e
                 print(f"[!] Gemini rate limited. Waiting {delay:.1f}s (attempt {attempt + 1}/{max_retries})...")
-                time.sleep(delay)
+                await asyncio.sleep(delay)
                 delay *= 2.0
             else:
                 raise
@@ -287,23 +331,22 @@ def _call_gemini(messages: List[ChatCompletionMessageParam], max_retries: int) -
     raise RuntimeError(RATE_LIMIT_EXHAUSTED) from last_exc
 
 
-def call_llm_with_retry(messages: List[ChatCompletionMessageParam], max_retries: int = 5) -> Any:
-    """Provider-agnostic dispatch. Response shape is identical either way
-    (both are OpenAI-compatible chat.completions responses), so every caller
-    below just does response.choices[0].message like before — no branching
-    needed past this function."""
+async def call_llm_with_retry(messages: List[ChatCompletionMessageParam], max_retries: int = 7, temperature: float = 0.1, tools: Optional[List[ChatCompletionToolParam]] = None) -> Any:
+    """Provider-agnostic dispatch."""
+    actual_tools = tools if tools is not None else AGENT_TOOLS
     if config.PROVIDER == "gemini":
-        return _call_gemini(messages, max_retries)
-    return _call_groq(messages, max_retries)
+        return await _call_gemini(messages, max_retries, temperature, actual_tools)
+    return await _call_groq(messages, max_retries, temperature, actual_tools)
 
 
-def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+async def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]], temperature: float = 0.1) -> Dict[str, Any]:
     record_id = bank_record.get("record_id", "UNKNOWN")
 
     trimmed_bank_record = {
         "record_id": bank_record.get("record_id"),
         "amount": bank_record.get("amount"),
         "description": bank_record.get("description"),
+        "notes": bank_record.get("notes")
     }
     trimmed_candidates = [
         {
@@ -360,10 +403,8 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
                 }
                 break
 
-            response = call_llm_with_retry(messages)
+            response = await call_llm_with_retry(messages, temperature=temperature)
             message = response.choices[0].message
-
-            # [FIXED HERE]: Use model_dump to preserve thought_signature and other SDK metadata
             msg_dict = message.model_dump(exclude_unset=True)
             
             messages.append(cast(ChatCompletionMessageParam, msg_dict))
@@ -372,7 +413,6 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
             if not message.tool_calls:
                 content_str = (message.content or "").strip()
                 if not content_str:
-                    # Retry limit enforcement for empty responses
                     if turn_count < MAX_TURNS:
                         print("  [!] Model produced an empty response without tool calls. Forcing follow-up reminder...")
                         messages.append(cast(ChatCompletionMessageParam, {
@@ -411,16 +451,12 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
                         args_dict = json.loads(tool_call.function.arguments or "{}")
                         print(f"\n  [AGENT TOOL CALL] -> sum_check")
                         print(f"  Target: {args_dict.get('target_amount')}")
-                        print(f"  Candidates supplied to sum_check:")
-                        for c in args_dict.get('candidates', []):
-                            print(f"    - {c.get('record_id')}: {c.get('amount')}")
                     except:
                         pass
                 elif function_name == "description_similarity":
                     try:
                         args_dict = json.loads(tool_call.function.arguments or "{}")
                         print(f"\n  [AGENT TOOL CALL] -> description_similarity")
-                        print(f"  Comparing: '{args_dict.get('desc_a')}' vs '{args_dict.get('desc_b')}'")
                     except:
                         pass
 
@@ -438,6 +474,11 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
                     try:
                         args_str = tool_call.function.arguments or "{}"
                         function_args = json.loads(args_str)
+                        
+                        # --- INJECT NATIVELY ---
+                        if function_name == "sum_check":
+                            function_args["candidates"] = candidates
+                            
                         tool_result = function_to_call(**function_args)
                     except Exception as e:
                         tool_result = {"error": str(e)}
@@ -456,7 +497,7 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
             if reached_final:
                 break
 
-            time.sleep(1.5)
+            await asyncio.sleep(1.5)
 
     except RuntimeError as e:
         if str(e) == RATE_LIMIT_EXHAUSTED:
@@ -472,51 +513,3 @@ def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, Any]]) 
 
     _write_log(final_decision)
     return final_decision or {}
-
-
-if __name__ == "__main__":
-    sample_dir = BASE_DIR / "backend" / "app" / "data_generation" / "samples"
-    bank_csv = sample_dir / "bank_statement.csv"
-    ledger_csv = sample_dir / "internal_ledger.csv"
-
-    if not bank_csv.exists() or not ledger_csv.exists():
-        print("[!] Dataset missing. Run `python -m backend.app.data_generation.generator` first.")
-    else:
-        with open(bank_csv, mode="r", encoding="utf-8") as f:
-            bank_records = list(csv.DictReader(f))
-
-        with open(ledger_csv, mode="r", encoding="utf-8") as f:
-            all_ledger = list(csv.DictReader(f))
-
-        for item in bank_records:
-            item["amount"] = float(item["amount"])
-        for item in all_ledger:
-            item["amount"] = float(item["amount"])
-
-        target_ids = ["BANK_0028", "BANK_0042"]
-        test_cases = [b for b in bank_records if b.get("record_id") in target_ids]
-
-        if not test_cases:
-            test_cases = bank_records[:2]
-
-        print(f"[i] Running with PROVIDER={config.PROVIDER}")
-
-        for idx, target in enumerate(test_cases, 1):
-            candidates = get_candidate_pool(target, all_ledger)
-
-            print(f"=================================================")
-            print(f"RUNNING REAL CASE {idx}: {target.get('record_id')}")
-            print(f"Target: Amount={target.get('amount')}, Desc='{target.get('description')}', Date='{target.get('date', 'N/A')}'")
-            print(f"Pre-filtered Candidates Count: {len(candidates)}")
-            print(f"FULL CANDIDATE POOL HANDED TO AGENT:")
-            for c in candidates:
-                print(f"  - {c.get('record_id')}: Amount={c.get('amount')}, Date={c.get('date', 'N/A')}, Desc='{c.get('description', '')}'")
-            print(f"=================================================")
-
-            decision = run_proposer(target, candidates)
-            print(f"\nFINAL DECISION {idx}:")
-            print(json.dumps(decision, indent=2))
-            print("\n")
-
-            if idx < len(test_cases):
-                time.sleep(3)

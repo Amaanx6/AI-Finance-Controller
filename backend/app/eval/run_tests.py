@@ -4,6 +4,7 @@ import os
 import csv
 import json
 import asyncio
+import argparse
 
 CURRENT_FILE = Path(__file__).resolve()
 BACKEND_DIR = CURRENT_FILE.parents[2]
@@ -14,6 +15,7 @@ for p in [str(PROJECT_ROOT), str(BACKEND_DIR)]:
         sys.path.insert(0, p)
 
 from backend.app.agent.verifier import run_verifier
+from backend.app.agent.proposer import get_candidate_pool
 from backend.app.matcher.reconciler import resolve_batch
 from backend.app.agent import config
 
@@ -34,6 +36,7 @@ def load_data():
         l["amount"] = float(l["amount"])
     return bank_records, ledger_records
 
+
 async def test_verifier_catches_decoy(bank_records, ledger_records):
     print("\n=======================================================")
     print("TEST 1: Verifier Catches Hardcoded Decoy")
@@ -41,7 +44,9 @@ async def test_verifier_catches_decoy(bank_records, ledger_records):
     
     bank_0042 = next((b for b in bank_records if b.get("record_id") == "BANK_0042"), bank_records[0])
     
-    # Inject a decoy proposal
+    # 1. PRE-FILTER CANDIDATES DOWN TO MAX 25 (Saves 80%+ tokens)
+    candidates = get_candidate_pool(bank_0042, ledger_records)
+    
     bad_proposal = {
         "status": "suggested_match",
         "matched_ledger_ids": ["LEDG_0042_1"],
@@ -50,10 +55,10 @@ async def test_verifier_catches_decoy(bank_records, ledger_records):
         "confidence": "high"
     }
 
-    result = await asyncio.to_thread(
-        run_verifier,
+    # 2. Pass the pre-filtered candidates pool
+    result = await run_verifier(
         bank_record=bank_0042,
-        candidates=ledger_records,
+        candidates=candidates,
         proposed_match=bad_proposal,
         proposer_reasoning=bad_proposal["reasoning"]
     )
@@ -62,6 +67,7 @@ async def test_verifier_catches_decoy(bank_records, ledger_records):
     print(f"Verifier Reasoning: {result.get('reasoning')}\n")
     assert result.get("decision") == "disagree", "Assertion Failed: Verifier agreed with a decoy match!"
     print("PASSED: Verifier correctly rejected decoy proposal.")
+
 
 async def test_batch_resolution(bank_records, ledger_records):
     print("\n=======================================================")
@@ -73,11 +79,12 @@ async def test_batch_resolution(bank_records, ledger_records):
     if len(test_batch) < 2:
         test_batch = bank_records[:4]
 
-    results = await resolve_batch(test_batch, ledger_records, concurrency=2)
+    results = await resolve_batch(test_batch, ledger_records,)
     
     confirmed = sum(1 for r in results if r.get("final_status") == "confirmed")
     exceptions = sum(1 for r in results if r.get("final_status") == "exception")
     print(f"Batch Summary: {confirmed} confirmed, {exceptions} exceptions out of {len(results)} records.")
+
 
 async def main():
     bank_records, ledger_records = load_data()
@@ -85,4 +92,23 @@ async def main():
     await test_batch_resolution(bank_records, ledger_records)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Run only Test 1 (fast, no rate-limit-heavy batch calls). "
+             "Use this for quick sanity checks during iteration; run the "
+             "full suite (no flag) before trusting a fix.",
+    )
+    args = parser.parse_args()
+ 
+    async def main_dispatch():
+        bank_records, ledger_records = load_data()
+        await test_verifier_catches_decoy(bank_records, ledger_records)
+        if not args.quick:
+            await test_batch_resolution(bank_records, ledger_records)
+        else:
+            print("\n[--quick] Skipped Test 2 (batch resolution) — "
+                  "run without --quick before considering a fix confirmed.")
+ 
+    asyncio.run(main_dispatch())

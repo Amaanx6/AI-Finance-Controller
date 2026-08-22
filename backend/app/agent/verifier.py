@@ -1,11 +1,14 @@
 import json
-import time
+import asyncio
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from backend.app.agent.prompts import VERIFIER_SYSTEM_PROMPT
 from backend.app.agent.tools import sum_check, description_similarity
-from backend.app.agent.proposer import call_llm_with_retry, MATCH_TOLERANCE_PCT, RATE_LIMIT_EXHAUSTED
+from backend.app.agent.proposer import call_llm_with_retry, AGENT_TOOLS, MATCH_TOLERANCE_PCT, RATE_LIMIT_EXHAUSTED
 from backend.app.agent import config
+
+logger = logging.getLogger("verifier")
 
 MAX_VERIFIER_TURNS = 3
 
@@ -13,23 +16,64 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOG_DIR = BASE_DIR / "logs" / "verifier"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-# 1. Lightweight in-memory cache for deterministic string similarity checks
+CACHE_DIR = BASE_DIR / "logs" / ".cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_FILE = CACHE_DIR / "sim_cache.json"
+
 _desc_sim_cache = {}
+if CACHE_FILE.exists():
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            _desc_sim_cache = json.load(f)
+    except Exception:
+        _desc_sim_cache = {}
 
 def cached_description_similarity(desc_a: str, desc_b: str) -> Dict[str, Any]:
-    key = tuple(sorted([desc_a or "", desc_b or ""]))
+    key = str(tuple(sorted([desc_a or "", desc_b or ""])))
     if key not in _desc_sim_cache:
-        _desc_sim_cache[key] = description_similarity(desc_a, desc_b)
+        result = description_similarity(desc_a, desc_b)
+        _desc_sim_cache[key] = result
+        try:
+            with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(_desc_sim_cache, f)
+        except Exception:
+            pass
+        return result
     return _desc_sim_cache[key]
 
-# 2. Bind the tools available to the Verifier agent
+# Verifier tools: AGENT_TOOLS[:2] plus submit_verifier_decision.
+# Note: "commentary" is NOT a registered tool schema. We catch it defensively when leaked.
+VERIFIER_TOOLS = AGENT_TOOLS[:2] + [
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_verifier_decision",
+            "description": "REQUIRED: call when finished to submit your final verification decision.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "decision": {
+                        "type": "string",
+                        "enum": ["agree", "disagree"]
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Evidence-backed explanation. If disagreeing, provide the specific objection."
+                    }
+                },
+                "required": ["decision", "reasoning"]
+            }
+        }
+    }
+]
+
 VERIFIER_AVAILABLE_FUNCTIONS = {
     "sum_check": sum_check,
     "description_similarity": cached_description_similarity,
 }
 
 
-def run_verifier(
+async def run_verifier(
     bank_record: Dict[str, Any], 
     candidates: List[Dict[str, Any]], 
     proposed_match: Dict[str, Any], 
@@ -39,9 +83,23 @@ def run_verifier(
     record_id = bank_record.get("record_id", "UNKNOWN")
     active_provider = provider or config.PROVIDER
 
+    trimmed_bank_record = {
+        "record_id": bank_record.get("record_id"),
+        "amount": bank_record.get("amount"),
+        "description": bank_record.get("description"),
+    }
+    trimmed_candidates = [
+        {
+            "record_id": c.get("record_id"),
+            "amount": c.get("amount"),
+            "description": c.get("description"),
+        }
+        for c in candidates[:25]
+    ]
+
     context = {
-        "bank_record": bank_record,
-        "all_candidates": candidates,
+        "bank_record": trimmed_bank_record,
+        "all_candidates": trimmed_candidates,
         "proposed_match": proposed_match,
         "proposer_reasoning": proposer_reasoning
     }
@@ -50,7 +108,7 @@ def run_verifier(
         f"{VERIFIER_SYSTEM_PROMPT}\n\n"
         f"GLOBAL CONSTANT: The maximum allowed fee tolerance is {MATCH_TOLERANCE_PCT}%.\n"
         "EFFICIENCY INSTRUCTION: Call multiple tools in the SAME response if verifying multiple components. "
-        "When you are ready to conclude, DO NOT call a tool. Instead, output your final decision purely as a JSON code block in the message content."
+        "CRITICAL INSTRUCTION: When you are ready to conclude, you MUST invoke the `submit_verifier_decision` tool call. Do not output raw JSON text."
     )
 
     messages = [
@@ -60,6 +118,7 @@ def run_verifier(
 
     trace_log = []
     final_decision = None
+    commentary_count = 0
 
     def _write_log(decision):
         log_file = LOG_DIR / f"{record_id}.json"
@@ -82,17 +141,13 @@ def run_verifier(
                 }
                 break
 
-            # The verifier loops as a true agent
-            response = call_llm_with_retry(messages) #type: ignore
+            response = await call_llm_with_retry(messages, temperature=0.1, tools=VERIFIER_TOOLS) #type: ignore
             message = response.choices[0].message
 
-            # FIX FOR GEMINI 400: Use model_dump to safely echo back the tool calls.
-            # This preserves `thought_signature` and all other provider-specific hidden fields.
             msg_dump = message.model_dump(exclude_unset=True)
             messages.append(msg_dump)
             trace_log.append(msg_dump)
 
-            # If no tools were called, this must be the final JSON verdict turn
             if not message.tool_calls:
                 content_str = (message.content or "").strip()
                 if not content_str:
@@ -107,27 +162,55 @@ def run_verifier(
                             "decision": parsed.get("decision", "disagree"),
                             "reasoning": parsed.get("reasoning", content_str)
                         }
-                    else:
-                        raise ValueError("No JSON block found")
-                except Exception as e:
-                    final_decision = {"decision": "disagree", "reasoning": f"Failed to parse verifier output as JSON: {content_str}"}
-                break
+                        break
+                except Exception:
+                    pass
 
-            # Execute tool calls natively
+                messages.append({
+                    "role": "user",
+                    "content": "You returned plain text. You MUST call the `submit_verifier_decision` tool."
+                })
+                continue
+
             reached_final_via_tool = False
             for tool_call in message.tool_calls:
                 fn_name = tool_call.function.name
                 
-                # Resiliency: If the LLM sees `submit_final_decision` in AGENT_TOOLS and uses it instead of raw JSON
-                if fn_name == "submit_final_decision":
+                # --- DEFENSIVE DISCARD & RECOVERY FOR LEAKED "commentary" ---
+                if fn_name == "commentary":
+                    commentary_count += 1
+                    raw_args = tool_call.function.arguments
+                    print(f"\n[!] WARNING: Caught leaked 'commentary' tool call (occurrence #{commentary_count}) for record {record_id}.")
+                    print(f"[!] Received raw arguments: {raw_args}")
+                    
+                    if commentary_count > 2:
+                        print(f"[!] 'commentary' emission exceeded threshold (>2). Aborting loop and flagging record.")
+                        final_decision = {"decision": "disagree", "reasoning": "Exceeded commentary loop limit; treated as invalid reasoning loop."}
+                        reached_final_via_tool = True
+                        break
+
+                    tool_result = {
+                        "error": "commentary is not a valid tool. Please use submit_verifier_decision or one of the provided tools (sum_check, description_similarity)."
+                    }
+                    tool_msg = {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": fn_name,
+                        "content": json.dumps(tool_result)
+                    }
+                    messages.append(tool_msg)
+                    trace_log.append(tool_msg)
+                    continue
+
+                if fn_name == "submit_verifier_decision":
                     try:
                         args = json.loads(tool_call.function.arguments or "{}")
                         final_decision = {
-                            "decision": "agree" if args.get("status") in ["matched", "suggested_match"] else "disagree",
-                            "reasoning": args.get("reasoning", "Extracted from submit_final_decision.")
+                            "decision": args.get("decision", "disagree"),
+                            "reasoning": args.get("reasoning", "No reasoning provided.")
                         }
                     except Exception:
-                        final_decision = {"decision": "disagree", "reasoning": "Malformed submit tool arguments."}
+                        final_decision = {"decision": "disagree", "reasoning": "Malformed submit args."}
                     reached_final_via_tool = True
                     break
 
@@ -135,6 +218,9 @@ def run_verifier(
                 if fn_callable:
                     try:
                         args_dict = json.loads(tool_call.function.arguments or "{}")
+                        if fn_name == "sum_check":
+                            args_dict["candidates"] = candidates
+                            
                         tool_result = fn_callable(**args_dict)
                     except Exception as e:
                         tool_result = {"error": str(e)}
@@ -153,7 +239,7 @@ def run_verifier(
             if reached_final_via_tool:
                 break
                 
-            time.sleep(1.0)
+            await asyncio.sleep(1.0)
 
     except RuntimeError as e:
         if str(e) == RATE_LIMIT_EXHAUSTED:

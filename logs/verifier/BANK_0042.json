@@ -6,22 +6,22 @@
       "role": "assistant",
       "tool_calls": [
         {
-          "id": "call_2059091",
+          "id": "call_3133556",
           "function": {
-            "arguments": "{\"desc_b\":\"Razorpay settlement batch #4042\",\"desc_a\":\"RZRPY SETL 01/19\"}",
+            "arguments": "{\"desc_a\":\"RZRPY SETL 01/19\",\"desc_b\":\"Razorpay settlement batch #4042\"}",
             "name": "description_similarity"
           },
           "type": "function",
           "extra_content": {
             "google": {
-              "thought_signature": "EpQICpEIARFNMg+v9DX8qh6HLn0NGNDRvVOTH1JFAa0K6bTp3cKcdAYfGHK+eT9inzw5bgwhYpweINaFHJJCQBlIVdJwhWiTggDIC5DS+kQm6notuaPv0g4a3RAuHbkYOBFt9bZGDFHzLByWAfcWwlye39ckI/ZBTp8/Rxy077KMSs+dBXYFxGSkbVoaY2yCKYVtawmRkezfcISQWDouV+v6y8+x8ahcRSr9HjcGuAmkwR0mENtL1PjdbrbtAzRM+pUEaQWzdzhJkl/zi1zI41EHmlwsGiQRVexQr+BCIHpUFIf64RJ+xQZzIEqxVWvkSayeLgMfyjNPe42JydcfosorsTjgnNe473QLe6/O/T91S1w8HuYA8nGN8qa1iAeIhrysXWyEm36d6tJxXS7w2nGTFoAYULzRAYZJoYHqiYN1Vs+Hm6K5UkpSESuDbscS1QxYFaGzSjy4ln3G3E/nhrmnc5YYCmljR5hoQV71FHfX44kckRtpyHD0nBEA5hrLCwQEm5wQMELgUC5oWey/LKjSP1/Klm6m2kDGpu8EvOgBs//8W9U5Ary5tUXN3AX8HmeTqwZtQZbt+P7PHlLIg0UjEAuITDfXMT1CrdlEUQsY2pdmb/Je24aJlO/aEUuAuLue+IW/tO66pnD+IvgnsrSULP/MYKd3wkDc7jq56XftMCfnvgrJ4bjWW33lz3ZP7Bqc/YVw3XWCZw5nQBeH/EtvNBAzVbfvJXwNf6Y5lNyBcB/NsyYRBSiRt/q4Qx4/aZn5xoGNYgJ362c4J9wurt9XsASfD8EvHSer842qSBpJ1FPLKQJX4vFPDkkVdZbZLnjJSDN5tXPhwoxMgRAXyCNSSPzqDctVe/QlmNMoAyPIvufNbGAh1mbtlDIFafw/DlFkfYHic8pEwvIAHIUtA42WnRGPETu6y61QoSAw2J7Nmf2b2QrHr+gfLWNk/apigHOU438E2QEDuELKrlhtikYEx1xHQPAd9Gu0gkBZVt32AouT4XJ8b1U9XCtDT3PNAX6ZgEfrntUqXRNLQXYwMbuM50GXXceJ7p3vZ8Jc9o9Zr5skVr7svd5Lkras724/s88eZ9w9B4AQIaQxFaVDhGUHPLcg+5LhljLsdEUo+r8BGEo27L9DBQSuedj08dgM4o9DCKQJJzf2bPD4C3RPl419gLic8v0HCjpHwHG5WGEqnSNp6Bws7yRX7vFAZ5kkWzDTEHls7lDTpZh0u7ztt+RohHKLKiFmwBXar19hypfSldLKUgqSPJX3IYGGDkW5gt5rG+EDlahCQLaa8w9eIoAhpc1hzTSpRKCy/8QPm/u9hqGBEPEfL+cLl08KO6eFLpiE8dHCE8E6tOHfaGuE6wDO5IhGUQyBjP1Qwq+G43u/PftyhsEU"
+              "thought_signature": "EtMGCtAGARFNMg+5zLelsX2e/4mJhghudX11JtBMrPcdpaRAea5dlwZJsCUVTxIBasuQhCsEZ1LQzltRsYnldwz2NtbByBqQSHn7JS4WSYE9lt6dL/oIsTbG+bv1NtA966dfBp18/u88d2zQseQuLnFEqtrFuau/OwTQ7O6/KyZRSjlwON0YRQdF/98UAYn9Hi5orV3+/oigVBULXvfpJezYuibIQ6KnpJDrIl15hrnazqh4tZi8PXQ5MbfRe/rSwUqqb4MGcuh26Py1K2emt1FGi0hm8HlUNNmWqDrYrzKcj/6/wicSRoTMBxwYA04fQ6rAD9cg/jswZbXZ5pL4djHirEGqGEoEIgKmdfXGlJ68bU2G3cS8krYMTbQdTlBEPe5dvZFlv9e47/jh0uw7ofDqFbxdVh+gaM7txGfuT2XeNzXhMCHpRc9MQ9NU2FIcaVmdw8/dhTR/fXoILcxKz5mUeuFrOwddzisqTZwGoZ40iJS1+EschRDZrVIRxTnK+rZSA0MzMTyUqqsvbFEu+TWOGYKmn1yvyNlyLWBZ6bIj7h1Aj+ihDqQAID4RMLSI/EXsjF1naaKg1NfXZRD1ZwlVQ7p32H17RdUp6QfIWEf9e4n94zjYKxOzhA+zw18NxMpijxbEaU5XzUGdXb6QGe4zRlMygpi0DNgt7oujZao3BgVVM51KeuemzS57RkVs/oqwiWM4Q3mO0H0vRtUXy0wZCK08OmDkEUtT+z/cHATeMiph+DxRE43eRvKhJdqZHxervChJO7Uvwn/Ja8nBw+TCRxTgkLpMp03P9UIVCDVGyjFSF65IIiEUg8+lVCzB3DFZH3zHGnpgm6IhfJZVJlGQKKYhHfLWw9rFHer9UjVxAeYXmamN4dluUHhJIxa2CUJ0MdNiJwV7THA888MVjcDOiYoibeJGf/XR/kjUyjJNsjyQ7cAVLz/3uIGKxNXLylp3N0OUPlFNXmj11g5eXMvEY0HWvAqguPaEejUSCl4t+adumeZCAhgWVUZl4hQtNK/gTFHkElNpoux3dIJHVAK1QLFZa52YvSA3p++AUp0dOEoJJeXGr2t/pM1lKVpdVfhtCbgr+6ia11EWXlptZJZSur15VW0r/gG/RN2D+MGW+OL21SE="
             }
           }
         },
         {
-          "id": "call_2059092",
+          "id": "call_3133557",
           "function": {
-            "arguments": "{\"candidates\":[{\"amount\":25552,\"record_id\":\"LEDG_0042\"},{\"record_id\":\"LEDG_0020\",\"amount\":25622},{\"amount\":25325,\"record_id\":\"LEDG_0042_1\"},{\"record_id\":\"LEDG_0008\",\"amount\":27059}],\"target_amount\":25552,\"fee_tolerance_pct\":3}",
+            "arguments": "{\"target_amount\":25552}",
             "name": "sum_check"
           },
           "type": "function"
@@ -30,28 +30,37 @@
     },
     {
       "role": "tool",
-      "tool_call_id": "call_2059091",
+      "tool_call_id": "call_3133556",
       "name": "description_similarity",
       "content": "{\"similarity_score\": 0.0, \"explanation\": \"No shared textual tokens; Token overlap score: 0.00\"}"
     },
     {
       "role": "tool",
-      "tool_call_id": "call_2059092",
+      "tool_call_id": "call_3133557",
       "name": "sum_check",
       "content": "{\"match_found\": false, \"count\": 0, \"total_valid_found\": 0, \"combinations_evaluated\": 11, \"combination_cap_hit\": false, \"matches\": []}"
     },
     {
-      "content": "```json\n{\n  \"decision\": \"agree\",\n  \"reasoning\": \"LEDG_0042 matches the bank record BANK_0042 exactly in amount (25552.0) with a 1-day date difference (2025-08-02 vs 2025-08-03). The bank description 'RZRPY SETL 01/19' is a standard banking abbreviation for 'Razorpay settlement', matching 'Razorpay settlement batch #4042'. No better candidate or decoy exists.\"\n}\n```",
       "role": "assistant",
-      "extra_content": {
-        "google": {
-          "thought_signature": "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"
+      "tool_calls": [
+        {
+          "id": "call_2248865",
+          "function": {
+            "arguments": "{\"reasoning\":\"LEDG_0042 is an exact amount match (25552.0) to BANK_0042. 'RZRPY SETL 01/19' is a standard abbreviation for Razorpay Settlement, matching LEDG_0042's description 'Razorpay settlement batch #4042'. Alternative candidates are unrelated vendor/freight payments with mismatched amounts.\",\"decision\":\"agree\"}",
+            "name": "submit_verifier_decision"
+          },
+          "type": "function",
+          "extra_content": {
+            "google": {
+              "thought_signature": "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"
+            }
+          }
         }
-      }
+      ]
     }
   ],
   "final_decision": {
     "decision": "agree",
-    "reasoning": "LEDG_0042 matches the bank record BANK_0042 exactly in amount (25552.0) with a 1-day date difference (2025-08-02 vs 2025-08-03). The bank description 'RZRPY SETL 01/19' is a standard banking abbreviation for 'Razorpay settlement', matching 'Razorpay settlement batch #4042'. No better candidate or decoy exists."
+    "reasoning": "LEDG_0042 is an exact amount match (25552.0) to BANK_0042. 'RZRPY SETL 01/19' is a standard abbreviation for Razorpay Settlement, matching LEDG_0042's description 'Razorpay settlement batch #4042'. Alternative candidates are unrelated vendor/freight payments with mismatched amounts."
   }
 }

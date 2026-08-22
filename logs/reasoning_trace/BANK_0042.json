@@ -6,13 +6,13 @@
       "agent": "proposer",
       "attempt": 1,
       "result": {
-        "matched_gateway_ids": [],
-        "confidence": "high",
         "matched_ledger_ids": [
           "LEDG_0042"
         ],
-        "reasoning": "LEDG_0042 has an exact amount match of 25552.0 with the bank record. Furthermore, the bank description 'RZRPY SETL 01/19' is an abbreviated form of 'Razorpay settlement batch #4042' (LEDG_0042). Although description_similarity returned 0.0 due to token-level abbreviation differences (RZRPY vs Razorpay, SETL vs settlement), per Rule 2 and Rule 3, description mismatch due to naming conventions does not disqualify a match when the amount matches exactly and context aligns. Therefore, LEDG_0042 is selected as the matched ledger record.",
-        "status": "suggested_match"
+        "reasoning": "LEDG_0042 is an exact amount match (25552.0) to the bank record BANK_0042 (25552.0). The description 'RZRPY SETL 01/19' is an abbreviation for 'Razorpay settlement batch #4042'. Although token-overlap similarity returned 0.0 due to abbreviations, LEDG_0042 is the sole exact amount candidate and clearly corresponds to the Razorpay settlement.",
+        "matched_gateway_ids": [],
+        "status": "suggested_match",
+        "confidence": "high"
       }
     },
     {
@@ -20,19 +20,19 @@
       "attempt": 1,
       "result": {
         "decision": "agree",
-        "reasoning": "LEDG_0042 matches the bank record BANK_0042 exactly in amount (25552.0) with a 1-day date difference (2025-08-02 vs 2025-08-03). The bank description 'RZRPY SETL 01/19' is a standard banking abbreviation for 'Razorpay settlement', matching 'Razorpay settlement batch #4042'. No better candidate or decoy exists."
+        "reasoning": "LEDG_0042 is an exact amount match (25552.0) to BANK_0042. 'RZRPY SETL 01/19' is a standard abbreviation for Razorpay Settlement, matching LEDG_0042's description 'Razorpay settlement batch #4042'. Alternative candidates are unrelated vendor/freight payments with mismatched amounts."
       }
     }
   ],
   "final_status": "confirmed",
   "final_decision": {
-    "matched_gateway_ids": [],
-    "confidence": "high",
     "matched_ledger_ids": [
       "LEDG_0042"
     ],
-    "reasoning": "LEDG_0042 has an exact amount match of 25552.0 with the bank record. Furthermore, the bank description 'RZRPY SETL 01/19' is an abbreviated form of 'Razorpay settlement batch #4042' (LEDG_0042). Although description_similarity returned 0.0 due to token-level abbreviation differences (RZRPY vs Razorpay, SETL vs settlement), per Rule 2 and Rule 3, description mismatch due to naming conventions does not disqualify a match when the amount matches exactly and context aligns. Therefore, LEDG_0042 is selected as the matched ledger record.",
-    "status": "suggested_match"
+    "reasoning": "LEDG_0042 is an exact amount match (25552.0) to the bank record BANK_0042 (25552.0). The description 'RZRPY SETL 01/19' is an abbreviation for 'Razorpay settlement batch #4042'. Although token-overlap similarity returned 0.0 due to abbreviations, LEDG_0042 is the sole exact amount candidate and clearly corresponds to the Razorpay settlement.",
+    "matched_gateway_ids": [],
+    "status": "suggested_match",
+    "confidence": "high"
   },
-  "wall_clock_time_sec": 56.55
+  "wall_clock_time_sec": 150.67
 }
