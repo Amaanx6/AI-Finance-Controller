@@ -1,9 +1,0 @@
-{
-  "bank_record_id": "BANK_0036",
-  "provider": "groq",
-  "trace": [],
-  "final_decision": {
-    "decision": "disagree",
-    "reasoning": "Rate limit exhausted."
-  }
-}
