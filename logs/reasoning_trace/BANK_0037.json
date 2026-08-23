@@ -1,0 +1,26 @@
+{
+  "record_id": "BANK_0037",
+  "provider": "gemini",
+  "history": [
+    {
+      "agent": "proposer",
+      "attempt": 1,
+      "result": {
+        "status": "flagged",
+        "matched_ledger_ids": [],
+        "matched_gateway_ids": [],
+        "reasoning": "Rate limit exhausted after retries.",
+        "confidence": "low"
+      }
+    }
+  ],
+  "final_status": "exception",
+  "final_decision": {
+    "status": "flagged",
+    "matched_ledger_ids": [],
+    "matched_gateway_ids": [],
+    "reasoning": "Rate limit exhausted after retries.",
+    "confidence": "low"
+  },
+  "wall_clock_time_sec": 290.04
+}

@@ -1,0 +1,50 @@
+{
+  "record_id": "BANK_0031",
+  "provider": "gemini",
+  "history": [
+    {
+      "agent": "proposer",
+      "attempt": 1,
+      "result": {
+        "matched_gateway_ids": [
+          "GW_0031_0",
+          "GW_0031_1",
+          "GW_0031_2"
+        ],
+        "matched_ledger_ids": [
+          "LEDG_0031_0",
+          "LEDG_0031_1",
+          "LEDG_0031_2"
+        ],
+        "status": "suggested_match",
+        "reasoning": "Bank record BANK_0031 (14,391.00) corresponds to Settlement batch 31. The three ledger components (LEDG_0031_0, LEDG_0031_1, LEDG_0031_2) sum to 14,818.00, and the three gateway components (GW_0031_0, GW_0031_1, GW_0031_2) also sum to 14,818.00. This results in a fee difference of 427.00 (2.88%), which is within the 3.0% fee tolerance. Description similarity between 'Settlement batch 31' and batch 31 components confirms the batch context with a similarity score of ~0.59 and 1.0 consistency score.",
+        "confidence": "high"
+      }
+    },
+    {
+      "agent": "verifier",
+      "attempt": 1,
+      "result": {
+        "decision": "agree",
+        "reasoning": "The proposed match is correct. The ledger components (LEDG_0031_0, LEDG_0031_1, LEDG_0031_2) sum to 14,818.00 against bank amount 14,391.00, resulting in a fee of 427.00 (2.88%), which is within the 3.0% threshold. The combination has a perfect consistency score of 1.0 (all components belong to batch 31) and description similarity of ~0.59 confirms batch context. All prefix rules are satisfied (matched_ledger_ids contains LEDG_ and matched_gateway_ids contains GW_)."
+      }
+    }
+  ],
+  "final_status": "confirmed",
+  "final_decision": {
+    "matched_gateway_ids": [
+      "GW_0031_0",
+      "GW_0031_1",
+      "GW_0031_2"
+    ],
+    "matched_ledger_ids": [
+      "LEDG_0031_0",
+      "LEDG_0031_1",
+      "LEDG_0031_2"
+    ],
+    "status": "suggested_match",
+    "reasoning": "Bank record BANK_0031 (14,391.00) corresponds to Settlement batch 31. The three ledger components (LEDG_0031_0, LEDG_0031_1, LEDG_0031_2) sum to 14,818.00, and the three gateway components (GW_0031_0, GW_0031_1, GW_0031_2) also sum to 14,818.00. This results in a fee difference of 427.00 (2.88%), which is within the 3.0% fee tolerance. Description similarity between 'Settlement batch 31' and batch 31 components confirms the batch context with a similarity score of ~0.59 and 1.0 consistency score.",
+    "confidence": "high"
+  },
+  "wall_clock_time_sec": 29.13
+}

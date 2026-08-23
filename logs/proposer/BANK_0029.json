@@ -1,0 +1,73 @@
+{
+  "bank_record_id": "BANK_0029",
+  "provider": "groq",
+  "trace": [
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_3186407",
+          "function": {
+            "arguments": "{\"target_amount\":28868}",
+            "name": "sum_check"
+          },
+          "type": "function",
+          "extra_content": {
+            "google": {
+              "thought_signature": "EvoFCvcFARFNMg8HsDMXt7ujWUj63gvM2DdASn4keZG84v0n1IxgWTNORxxt8+lqw0VC82MvidzDe5J8UXjBaNH8MydTqXwe86CI6NUr48kM3B6zh7YUOqWqxchbu8zbd4TJqwxLrVhxMCHc4+Gy/YKIupggNhELojMxngQyHPNG9qIc0PcGVwUMAVjK4BcKadPRcEe7yc6u4e4wPMUttDFcVkuzma6MwB2eAIdekKT66ulEwxiBkRHqY+/fUOusyHZGXLa/xnEq8uxMzPPlzyGkKLvvpfeCHdZUiNc1RnGJdZNrHXhjiUW6KvUXvvhI8/idXvLQOZ+uDuOb8/zudgEcWznQe1BWmLlQjarawKNDkfZGeBcXCZatdn57d01b/qGArCfOylFHEgtFW6XTu3p1pGOocHzbvcM36wpBhLSjR37b24oLqKst+VZFC9uRunFjQ6y+LzCCFimqC+QH0IWSBeKfaqARuaeFcdOi7XDz4nSevcRsjDHu/d4bOl1jF56g5G7KSjNZYQZ8TrGu49F6uYWFm59csSyWJpanBAz6oKGl0hF+OUfvScLjVj5JTOOYsHPV9FTNFZz9mLKlWe/F9c7/Q/Jj/HVej8bqj4afHVu6HW0/yjgH2/c7cSCA+r0KKF8TCSTjh/zgrPVBOo+n1HlmveSrsX0v7Zn2kPc3y9IQkFkShTfBrXfv6qTYt7cPR8Yzt7c1zV3YIT8mv68XKl1CtY394v1rZ0ZPS49km56SnSK9GtSU//Pf0YTY0H0wxDbTUgkI+v4wY26Sc6FpRI7QrUbhlGvVh3Cadu1QXcnvp4bOV7yR2co7/n/rtTmesQ3Chl+rEUDNBXeEDEyqSbTW8V/guJOMJ7yuAVAcXjtzsWpXDgdXmZqbqh9D+RSMtGLenPFRkvyo12frOu32COSba5prSY2CmBqIM4RF9AF3H9QNeD98NnIJbeH2wW7w+wG/6SKjrvLwfOnaar/qqXamitPnjGy9lS9AzG2UYDQxbYIxYo8glGaK"
+            }
+          }
+        },
+        {
+          "id": "call_3186408",
+          "function": {
+            "arguments": "{\"desc_a\":\"Settlement batch 29\",\"desc_b\":\"Payment component 1 for batch 29\"}",
+            "name": "description_similarity"
+          },
+          "type": "function"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_3186407",
+      "name": "sum_check",
+      "content": "{\"match_found\": true, \"count\": 5, \"total_valid_found\": 1437, \"combinations_evaluated\": 50001, \"combination_cap_hit\": true, \"matches\": [{\"candidate_ids\": [\"LEDG_0029_2\", \"LEDG_0029_0\", \"LEDG_0029_1\"], \"candidate_sum\": 29611.0, \"target_amount\": 28868, \"fee_amount\": 743.0, \"fee_percentage\": 2.51, \"subset_size\": 3, \"difference\": 743.0, \"consistency_score\": 1.0, \"dominant_group\": \"batch:29\", \"outlier_ids\": [], \"consistency_note\": \"All 3 components share group 'batch:29'.\"}, {\"candidate_ids\": [\"LEDG_0031_1\", \"LEDG_0031_0\", \"LEDG_0031_2\", \"LEDG_0029_1\"], \"candidate_sum\": 29301.0, \"target_amount\": 28868, \"fee_amount\": 433.0, \"fee_percentage\": 1.48, \"subset_size\": 4, \"difference\": 433.0, \"consistency_score\": 0.75, \"dominant_group\": \"batch:31\", \"outlier_ids\": [\"LEDG_0029_1\"], \"consistency_note\": \"WARNING: 1 of 4 components do NOT share the dominant group 'batch:31' \\u2014 outliers: ['LEDG_0029_1']. This combination likely mixes records from different underlying transactions despite the sum being within tolerance. Treat with caution.\"}, {\"candidate_ids\": [\"LEDG_0031_1\", \"LEDG_0031_0\", \"LEDG_0031_2\", \"GW_0029_1\"], \"candidate_sum\": 29301.0, \"target_amount\": 28868, \"fee_amount\": 433.0, \"fee_percentage\": 1.48, \"subset_size\": 4, \"difference\": 433.0, \"consistency_score\": 0.75, \"dominant_group\": \"batch:31\", \"outlier_ids\": [], \"consistency_note\": \"WARNING: 0 of 4 components do NOT share the dominant group 'batch:31' \\u2014 outliers: []. This combination likely mixes records from different underlying transactions despite the sum being within tolerance. Treat with caution.\"}, {\"candidate_ids\": [\"LEDG_0031_1\", \"LEDG_0031_0\", \"LEDG_0031_2\", \"LEDG_0030_1\"], \"candidate_sum\": 29575.0, \"target_amount\": 28868, \"fee_amount\": 707.0, \"fee_percentage\": 2.39, \"subset_size\": 4, \"difference\": 707.0, \"consistency_score\": 0.75, \"dominant_group\": \"batch:31\", \"outlier_ids\": [\"LEDG_0030_1\"], \"consistency_note\": \"WARNING: 1 of 4 components do NOT share the dominant group 'batch:31' \\u2014 outliers: ['LEDG_0030_1']. This combination likely mixes records from different underlying transactions despite the sum being within tolerance. Treat with caution.\"}, {\"candidate_ids\": [\"LEDG_0031_1\", \"LEDG_0031_0\", \"LEDG_0031_2\", \"GW_0030_1\"], \"candidate_sum\": 29575.0, \"target_amount\": 28868, \"fee_amount\": 707.0, \"fee_percentage\": 2.39, \"subset_size\": 4, \"difference\": 707.0, \"consistency_score\": 0.75, \"dominant_group\": \"batch:31\", \"outlier_ids\": [], \"consistency_note\": \"WARNING: 0 of 4 components do NOT share the dominant group 'batch:31' \\u2014 outliers: []. This combination likely mixes records from different underlying transactions despite the sum being within tolerance. Treat with caution.\"}]}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_3186408",
+      "name": "description_similarity",
+      "content": "{\"similarity_score\": 0.5926, \"explanation\": \"Shared terms: [29, batch]; Shared reference numbers: [29]; Token overlap score: 0.59\"}"
+    },
+    {
+      "role": "assistant",
+      "reasoning": "We have bank record amount 28868. Need match ledger and gateway.\n\nSum_check found combinations that sum to target with fee tolerance up to 3% (fee amount difference). The best match appears LEDG_0029_0 + LEDG_0029_1 + LEDG_0029_2 = amounts 10201 + 14483 + 4927 = 29611. That's 743 over target, fee 2.51% within 3%. This is a batch 29 group, matches description \"Settlement batch 29\". So likely the correct match is those three ledger components and the corresponding three gateway components (GW_0029_0, GW_0029_1, GW_0029_2). Need to check sum of gateway components: 10201+14483+4927 = same 29611. So both ledger and gateway have same amounts. The bank amount is 28868, lower by 743 (2.51%). That could be processing fee.\n\nThus we can suggest match: ledger IDs LEDG_0029_0, LEDG_0029_1, LEDG_0029_2 and gateway IDs GW_0029_0, GW_0029_1, GW_0029_2.\n\nWe should also consider description similarity: we computed similarity between bank description and LEDG_0029_0 description got 0.5926. That's decent. Could also compute similarity with GW_0029_0 maybe similar. But we have enough.\n\nWe need to ensure no other combination with single candidate matches amount within tolerance? Let's see any single candidate amount close to 28868 +/- 3% (i.e., 27902 to 29733). Candidates: LEDG_0029_0 10201 no; LEDG_0029_1 14483; LEDG_0029_2 4927; LEDG_0030_0 10837; LEDG_0030_1 14757; LEDG_0031_0 5923; LEDG_0031_1 2949; LEDG_0031_2 5946; LEDG_0033_0 12647; LEDG_0033_1 8118; LEDG_0033_2 9177; LEDG_0033_3 10479; LEDG_0034_0 3163; LEDG_0034_1 13597; LEDG_0036_0 14855; LEDG_0036_1 9749. None near 28868. So need sum.\n\nThus best is batch 29 components.\n\nNow we need to submit final decision using submit_final_decision tool. Status should be \"matched\" or \"suggested_match\"? According to schema: status \"matched\" | \"no_match\" | \"flagged\" | \"suggested_match\". Since we have a clear match, we can use \"matched\". Provide matched_ledger_ids list and matched_gateway_ids list. Reasoning includes description similarity and sum check.\n\nConfidence: high.\n\nProceed.",
+      "tool_calls": [
+        {
+          "id": "fc_e3efd39c-f14a-43e1-b8ea-77b6ac442393",
+          "function": {
+            "arguments": "{\"confidence\":\"high\",\"matched_gateway_ids\":[\"GW_0029_0\",\"GW_0029_1\",\"GW_0029_2\"],\"matched_ledger_ids\":[\"LEDG_0029_0\",\"LEDG_0029_1\",\"LEDG_0029_2\"],\"reasoning\":\"The bank record 'Settlement batch 29' amount 28868 matches the combined amounts of the three batch 29 components (10201 + 14483 + 4927 = 29611). The difference is 743, which is a 2.51% fee, within the allowed 3% tolerance. sum_check confirmed this combination as a valid match with consistency score 1.0 and dominant group batch:29. Description similarity between the bank description and LEDG_0029_0 is 0.5926, indicating a meaningful textual overlap (both reference batch 29). No single candidate matches the amount, and no other combination offers a better fee or consistency. Therefore, the three ledger records and their corresponding three gateway records constitute the correct match.\",\"status\":\"matched\"}",
+            "name": "submit_final_decision"
+          },
+          "type": "function"
+        }
+      ]
+    }
+  ],
+  "final_decision": {
+    "confidence": "high",
+    "matched_gateway_ids": [
+      "GW_0029_0",
+      "GW_0029_1",
+      "GW_0029_2"
+    ],
+    "matched_ledger_ids": [
+      "LEDG_0029_0",
+      "LEDG_0029_1",
+      "LEDG_0029_2"
+    ],
+    "reasoning": "The bank record 'Settlement batch 29' amount 28868 matches the combined amounts of the three batch 29 components (10201 + 14483 + 4927 = 29611). The difference is 743, which is a 2.51% fee, within the allowed 3% tolerance. sum_check confirmed this combination as a valid match with consistency score 1.0 and dominant group batch:29. Description similarity between the bank description and LEDG_0029_0 is 0.5926, indicating a meaningful textual overlap (both reference batch 29). No single candidate matches the amount, and no other combination offers a better fee or consistency. Therefore, the three ledger records and their corresponding three gateway records constitute the correct match.",
+    "status": "matched"
+  }
+}

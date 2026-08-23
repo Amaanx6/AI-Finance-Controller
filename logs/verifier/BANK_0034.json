@@ -1,0 +1,9 @@
+{
+  "bank_record_id": "BANK_0034",
+  "provider": "gemini",
+  "trace": [],
+  "final_decision": {
+    "decision": "disagree",
+    "reasoning": "Rate limit exhausted."
+  }
+}

@@ -107,6 +107,11 @@ async def run_verifier(
     system_instruction = (
         f"{VERIFIER_SYSTEM_PROMPT}\n\n"
         f"GLOBAL CONSTANT: The maximum allowed fee tolerance is {MATCH_TOLERANCE_PCT}%.\n"
+        "CANDIDATE SOURCES: all_candidates and the proposer's proposed_match may reference records from "
+        "TWO different sources — the internal ledger (record_id prefix 'LEDG_') and the gateway export "
+        "(record_id prefix 'GW_'). When checking the proposer's work, confirm that its matched_ledger_ids "
+        "contains only LEDG_ ids and its matched_gateway_ids contains only GW_ ids; treat any source "
+        "mixup (a ledger id under matched_gateway_ids or vice versa) as grounds to disagree.\n"
         "EFFICIENCY INSTRUCTION: Call multiple tools in the SAME response if verifying multiple components. "
         "CRITICAL INSTRUCTION: When you are ready to conclude, you MUST invoke the `submit_verifier_decision` tool call. Do not output raw JSON text."
     )

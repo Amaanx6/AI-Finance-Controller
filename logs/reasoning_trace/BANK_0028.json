@@ -6,16 +6,16 @@
       "agent": "proposer",
       "attempt": 1,
       "result": {
-        "reasoning": "Bank record BANK_0028 ('Settlement batch 28', amount 40,504.0) matches ledger components LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, and LEDG_0028_3. The candidate sum of these four components is 41,650.0, which after a 2.75% fee (1,146.0) yields 40,504.0 (well within the allowed 3.0% fee tolerance). Furthermore, all four records share 100% group consistency ('batch:28') and show strong description similarity (0.5926).",
-        "matched_gateway_ids": [],
-        "status": "suggested_match",
         "confidence": "high",
+        "matched_gateway_ids": [],
         "matched_ledger_ids": [
           "LEDG_0028_0",
           "LEDG_0028_1",
           "LEDG_0028_2",
           "LEDG_0028_3"
-        ]
+        ],
+        "reasoning": "The bank record is a settlement batch 28 for amount 40504. The ledger contains four component records for batch 28 (LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, LEDG_0028_3) whose amounts sum to 41650, which is 1146 higher than the bank amount (2.83% of the target). This difference is within the allowed 3% fee tolerance, so the combination is a valid match. Description similarity between the bank description and the component descriptions is moderate (\u22480.59), indicating they refer to the same batch. No other candidate groups provide a better amount or description fit without mixing unrelated batches. Therefore the batch 28 ledger components are the correct match.",
+        "status": "matched"
       }
     },
     {
@@ -23,22 +23,22 @@
       "attempt": 1,
       "result": {
         "decision": "agree",
-        "reasoning": "The proposed match correctly pairs bank record BANK_0028 ('Settlement batch 28', amount 40,504.0) with ledger components LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, and LEDG_0028_3. The total component amount is 41,650.0, resulting in a 2.75% fee (1,146.0), which is within the allowed 3.0% fee tolerance. All four ledger components share 100% group consistency ('batch:28') with a consistency score of 1.0, whereas alternative candidate sums mix components from unrelated batches."
+        "reasoning": "The four ledger components for batch 28 sum to 41650, which is 1146 (2.83%) above the bank amount 40504, within the 3% fee tolerance. All component descriptions share the batch 28 identifier, giving a high description similarity (~0.59) and a consistent grouping (no outlier batches). No other pure\u2011batch combination provides a closer sum without mixing unrelated batches, and the best mixed\u2011batch alternative flagged a low consistency score. Therefore the proposed match is valid."
       }
     }
   ],
   "final_status": "confirmed",
   "final_decision": {
-    "reasoning": "Bank record BANK_0028 ('Settlement batch 28', amount 40,504.0) matches ledger components LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, and LEDG_0028_3. The candidate sum of these four components is 41,650.0, which after a 2.75% fee (1,146.0) yields 40,504.0 (well within the allowed 3.0% fee tolerance). Furthermore, all four records share 100% group consistency ('batch:28') and show strong description similarity (0.5926).",
-    "matched_gateway_ids": [],
-    "status": "suggested_match",
     "confidence": "high",
+    "matched_gateway_ids": [],
     "matched_ledger_ids": [
       "LEDG_0028_0",
       "LEDG_0028_1",
       "LEDG_0028_2",
       "LEDG_0028_3"
-    ]
+    ],
+    "reasoning": "The bank record is a settlement batch 28 for amount 40504. The ledger contains four component records for batch 28 (LEDG_0028_0, LEDG_0028_1, LEDG_0028_2, LEDG_0028_3) whose amounts sum to 41650, which is 1146 higher than the bank amount (2.83% of the target). This difference is within the allowed 3% fee tolerance, so the combination is a valid match. Description similarity between the bank description and the component descriptions is moderate (\u22480.59), indicating they refer to the same batch. No other candidate groups provide a better amount or description fit without mixing unrelated batches. Therefore the batch 28 ledger components are the correct match.",
+    "status": "matched"
   },
-  "wall_clock_time_sec": 98.33
+  "wall_clock_time_sec": 481.64
 }

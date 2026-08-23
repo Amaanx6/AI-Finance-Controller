@@ -81,8 +81,16 @@ AGENT_TOOLS: List[ChatCompletionToolParam] = [
                         "type": "string",
                         "enum": ["matched", "no_match", "flagged", "suggested_match"]
                     },
-                    "matched_ledger_ids": {"type": "array", "items": {"type": "string"}},
-                    "matched_gateway_ids": {"type": "array", "items": {"type": "string"}},
+                    "matched_ledger_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "record_id values ONLY from the internal ledger (ids starting with LEDG_). Do not include gateway ids here."
+                    },
+                    "matched_gateway_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "record_id values ONLY from the gateway export (ids starting with GW_). Do not include ledger ids here."
+                    },
                     "reasoning": {"type": "string"},
                     "confidence": {"type": "string", "enum": ["high", "medium", "low"]}
                 },
@@ -157,46 +165,82 @@ def _extract_retry_after(exc: Exception) -> Optional[float]:
                 return None
     return None
 
-def get_candidate_pool(
-    bank_record: Dict[str, Any],
-    all_ledger: List[Dict[str, Any]],
-    date_window_days: int = 5,
-    max_candidates: int = 25
+def _date_window_filter(
+    records: List[Dict[str, Any]],
+    target_date_str: str,
+    date_window_days: int,
 ) -> List[Dict[str, Any]]:
-    target_amount = float(bank_record["amount"])
-    target_date_str = bank_record.get("date", "")
-
-    date_filtered: List[Dict[str, Any]] = []
-    for l in all_ledger:
+    filtered: List[Dict[str, Any]] = []
+    for r in records:
         date_diff_days = 0
-        if target_date_str and l.get("date"):
+        if target_date_str and r.get("date"):
             try:
                 d1 = datetime.strptime(target_date_str, "%Y-%m-%d")
-                d2 = datetime.strptime(l.get("date", ""), "%Y-%m-%d")
+                d2 = datetime.strptime(r.get("date", ""), "%Y-%m-%d")
                 date_diff_days = abs((d1 - d2).days)
             except ValueError:
                 date_diff_days = 0
-
         if date_diff_days <= date_window_days:
-            date_filtered.append(l)
+            filtered.append(r)
+    return filtered
+
+
+def get_candidate_pool(
+    bank_record: Dict[str, Any],
+    all_ledger: List[Dict[str, Any]],
+    all_gateway: List[Dict[str, Any]],
+    date_window_days: int = 5,
+    max_candidates: int = 25
+) -> List[Dict[str, Any]]:
+    """
+    Builds the candidate pool the agent searches over. Pulls from BOTH the
+    internal ledger and the gateway export -- three-way reconciliation
+    (bank <-> ledger <-> gateway) requires the agent to actually see gateway
+    candidates, not just ledger ones, or matched_gateway_ids can never be
+    populated correctly.
+
+    Same date-window filtering and same tight-match/broad-search logic as
+    before, just applied over the union of both sources instead of ledger
+    alone. Candidate record_ids already carry a source-identifying prefix
+    (LEDG_ / GW_), so no extra tagging is needed for the agent (or for
+    sum_check/description_similarity, which are source-agnostic) to tell
+    which source a given candidate came from.
+    """
+    target_amount = float(bank_record["amount"])
+    target_date_str = bank_record.get("date", "")
+
+    ledger_filtered = _date_window_filter(all_ledger, target_date_str, date_window_days)
+    gateway_filtered = _date_window_filter(all_gateway, target_date_str, date_window_days)
+    combined_filtered = ledger_filtered + gateway_filtered
 
     has_tight_match = any(
         abs(float(l["amount"]) - target_amount) / max(target_amount, 1.0) <= TIGHT_MATCH_THRESHOLD
-        for l in date_filtered
+        for l in combined_filtered
     )
 
     if has_tight_match:
+        # Global rank by amount closeness across both sources -- source doesn't
+        # bias this one, the closest candidates win regardless of where they
+        # came from, so a single combined-then-truncated list is fine here.
         direct_candidates = [
-            l for l in date_filtered
+            l for l in combined_filtered
             if abs(float(l["amount"]) - target_amount) / max(target_amount, 1.0) <= 0.10
         ]
         return sorted(direct_candidates, key=lambda l: abs(float(l["amount"]) - target_amount))[:max_candidates]
     else:
-        component_candidates = [
-            l for l in date_filtered
-            if float(l["amount"]) <= target_amount * 1.05
-        ]
-        return component_candidates[:max_candidates]
+        # Broad/component search (used for sum_check-style multi-part
+        # settlements): cap EACH source at max_candidates independently,
+        # then combine. A naive "concatenate both sources, then slice to
+        # max_candidates" here would silently starve whichever source is
+        # listed second (gateway) any time the first source (ledger) alone
+        # already fills the cap -- which is exactly what happened on the
+        # many_to_one_settlement regression case (BANK_0028) during testing:
+        # ledger alone had 30 candidates within tolerance, so gateway
+        # candidates never appeared in the pool at all. Capping per-source
+        # guarantees the agent always sees candidates from both sides.
+        ledger_component = [l for l in ledger_filtered if float(l["amount"]) <= target_amount * 1.05][:max_candidates]
+        gateway_component = [l for l in gateway_filtered if float(l["amount"]) <= target_amount * 1.05][:max_candidates]
+        return ledger_component + gateway_component
 
 
 def _extract_invalid_tool_name(exc: Exception) -> Optional[str]:
@@ -365,6 +409,13 @@ async def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, A
     system_instruction = (
         f"{PROPOSER_SYSTEM_PROMPT}\n\n"
         f"GLOBAL CONSTANT: The maximum allowed fee tolerance for any match (single or sum) is exactly {MATCH_TOLERANCE_PCT}%.\n"
+        "CANDIDATE SOURCES: The `candidates` list contains records from TWO different sources mixed "
+        "together — the internal ledger and the gateway export. You can tell them apart by their "
+        "record_id prefix: ids starting with 'LEDG_' are ledger records, ids starting with 'GW_' are "
+        "gateway records. This is a three-way reconciliation (bank <-> ledger <-> gateway): when you "
+        "submit your decision, matched_ledger_ids must contain ONLY LEDG_ ids and matched_gateway_ids "
+        "must contain ONLY GW_ ids — never mix them, and never put a ledger id in matched_gateway_ids "
+        "or vice versa.\n"
         "CRITICAL INSTRUCTION: Never output raw JSON as plain text responses. "
         "When you reach a final verdict, you MUST invoke the `submit_final_decision` tool call.\n"
         "EFFICIENCY INSTRUCTION: If you need both sum_check and description_similarity, "
