@@ -12,6 +12,13 @@ which returns a list of results per bank record.
 
 It also supports running as a script (python -m backend.app.matcher.fast_matcher)
 against the generated CSVs to print a summary.
+
+CHANGE (API integration): `fast_match_bank_records` now accepts an optional
+`progress_callback(completed: int, total: int, result: MatchResult)` invoked
+after each bank record is scored, so callers (e.g. the FastAPI job runner) can
+report incremental progress. It defaults to None and is a no-op if omitted,
+so every existing caller (this file's __main__, evaluate.py, direct imports)
+behaves exactly as before.
 """
 from __future__ import annotations
 
@@ -19,7 +26,7 @@ import csv
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -30,6 +37,9 @@ class MatchResult:
     matched_gateway_id: Optional[str] = None
     ledger_candidates: List[str] = field(default_factory=list)
     gateway_candidates: List[str] = field(default_factory=list)
+
+
+ProgressCallback = Callable[[int, int, "MatchResult"], None]
 
 
 def load_csv(path: Path) -> List[Dict[str, str]]:
@@ -69,6 +79,7 @@ def fast_match_bank_records(
     amount_tolerance: float = 0.01,
     date_days_tolerance: int = 3,
     ref_amount_tolerance: float = 0.02,
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> List[MatchResult]:
     """Perform deterministic fast-path matching for each bank record."""
     # Index by reference number for exact matches
@@ -87,6 +98,16 @@ def fast_match_bank_records(
     ]
 
     results: List[MatchResult] = []
+    total = len(bank_records)
+
+    def _emit(result: MatchResult) -> None:
+        results.append(result)
+        if progress_callback is not None:
+            try:
+                progress_callback(len(results), total, result)
+            except Exception:
+                # Progress reporting must never break the matching pipeline.
+                pass
 
     for b in bank_records:
         bank_id = b.get("record_id", "")
@@ -137,7 +158,7 @@ def fast_match_bank_records(
                 gateway_candidates = [r["record_id"] for r in gw_matches if r.get("record_id")]
                 status = "unresolved"
 
-            results.append(
+            _emit(
                 MatchResult(
                     bank_id=bank_id,
                     status=status,
@@ -151,9 +172,7 @@ def fast_match_bank_records(
 
         # 2) Tolerance match
         if b_amount is None or b_date is None:
-            results.append(
-                MatchResult(bank_id=bank_id, status="unresolved", ledger_candidates=[], gateway_candidates=[])
-            )
+            _emit(MatchResult(bank_id=bank_id, status="unresolved", ledger_candidates=[], gateway_candidates=[]))
             continue
 
         # Find ledger candidates
@@ -188,7 +207,7 @@ def fast_match_bank_records(
         else:
             status = "unresolved"
 
-        results.append(
+        _emit(
             MatchResult(
                 bank_id=bank_id,
                 status=status,

@@ -11,12 +11,19 @@ import time
 from contextlib import redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from backend.app.matcher.fast_matcher import load_csv, fast_match_bank_records, MatchResult
-from backend.app.matcher.reconciler import resolve_batch, start_wait_tracking, stop_wait_tracking
+from backend.app.matcher.reconciler import (
+    resolve_batch,
+    resolve_record,
+    start_wait_tracking,
+    stop_wait_tracking,
+)
 from backend.app.agent.proposer import run_proposer, get_candidate_pool, KEY_STATES, get_least_loaded_key
 from backend.app.agent import config
+from backend.app.api.circuit_breaker import CircuitBreaker, is_transient_error
+from backend.app.api.logging_utils import log_event
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
@@ -40,6 +47,15 @@ PATTERN_ORDER = [
     "near_miss_amount_date",
     "genuine_anomaly",
 ]
+
+# Callback types used to wire this pipeline into the FastAPI job runner
+# (see backend/app/api/job.py). All are optional and default to no-ops so
+# `python -m backend.app.scripts.evaluate` behaves exactly as before.
+FastProgressCB = Callable[[int, int], None]
+AgentProgressCB = Callable[[Dict[str, Any]], None]
+ExceptionCB = Callable[[Dict[str, Any]], None]
+DLQCB = Callable[[Dict[str, Any]], None]
+
 
 class _TeeCapture(io.StringIO):
     def __init__(self, real_stdout):
@@ -94,6 +110,135 @@ def load_ground_truth(path: Path) -> Dict[str, Dict[str, Any]]:
     by_bank["__orphans__"] = orphans  # type: ignore[assignment]
     return by_bank
 
+
+# ---------------------------------------------------------------------------
+# Circuit-breaker-aware, progress-reporting record resolution
+# ---------------------------------------------------------------------------
+# These two functions mirror resolve_batch()'s / run_single_agent_baseline()'s
+# existing concurrency pattern (same semaphore sizing, same
+# get_least_loaded_key() load balancing) but add three things reconciler.py
+# and the original baseline runner don't have:
+#   1. A progress callback fired the instant each individual record finishes
+#      (this is what powers GET /api/status/{run_id}'s live progress bar).
+#   2. A circuit breaker check before each LLM call, so a provider that's
+#      throwing consecutive connection/timeout errors gets failed-fast
+#      instead of hammered further.
+#   3. Per-record exception capture into a Dead-Letter Queue instead of
+#      letting one bad record crash the whole asyncio.gather().
+# reconciler.py and evaluate.py's original run_single_agent_baseline are left
+# untouched; resolve_record and _baseline_resolve_one (the actual LLM-calling
+# units of work) are reused as-is.
+
+async def _resolve_batch_with_progress(
+    bank_records: List[Dict[str, Any]],
+    all_ledger: List[Dict[str, Any]],
+    all_gateway: List[Dict[str, Any]],
+    *,
+    run_id: str = "cli",
+    progress_cb: Optional[AgentProgressCB] = None,
+    exception_cb: Optional[ExceptionCB] = None,
+    dlq_cb: Optional[DLQCB] = None,
+    circuit_breaker: Optional[CircuitBreaker] = None,
+) -> List[Dict[str, Any]]:
+    start_time = time.time()
+    concurrency = len(KEY_STATES) if KEY_STATES else 1
+    sem = asyncio.Semaphore(max(4, concurrency))
+    results: List[Dict[str, Any]] = []
+
+    async def process(record: Dict[str, Any]) -> None:
+        record_id = record.get("record_id", "UNKNOWN")
+        async with sem:
+            key = get_least_loaded_key()
+
+            if circuit_breaker is not None and circuit_breaker.is_open(key.provider):
+                dlq_entry = {
+                    "record_id": record_id,
+                    "stage": "agent_resolution",
+                    "reason": "circuit_breaker_open",
+                    "provider": key.provider,
+                    "detail": f"Circuit open for provider '{key.provider}' after repeated "
+                              f"connection/timeout failures; skipped to avoid hammering a dead endpoint.",
+                }
+                log_event("circuit_breaker_skip", run_id, record_id=record_id, provider=key.provider)
+                if dlq_cb:
+                    dlq_cb(dlq_entry)
+                result = {
+                    "record_id": record_id,
+                    "provider": key.provider,
+                    "handled_by_key": key.key_id,
+                    "final_status": "dlq",
+                    "final_decision": {"status": "dlq", "reason": "circuit_breaker_open"},
+                    "wall_clock_time_sec": 0.0,
+                }
+                results.append(result)
+                if progress_cb:
+                    progress_cb(result)
+                return
+
+            call_start = time.time()
+            try:
+                result = await resolve_record(record, all_ledger, all_gateway, key)
+                if circuit_breaker is not None:
+                    circuit_breaker.record_success(key.provider)
+                log_event(
+                    "record_resolved", run_id, record_id=record_id, provider=key.provider,
+                    latency_sec=time.time() - call_start, final_status=result.get("final_status"),
+                )
+                if result.get("final_status") != "confirmed" and exception_cb:
+                    exception_cb({
+                        "record_id": record_id,
+                        "stage": "agent_resolution",
+                        "reason": result.get("final_status", "exception"),
+                        "provider": key.provider,
+                        "detail": (result.get("final_decision") or {}).get("reasoning"),
+                    })
+            except Exception as exc:  # noqa: BLE001 - deliberately broad: any failure -> DLQ
+                if circuit_breaker is not None:
+                    circuit_breaker.record_failure(key.provider, exc)
+                log_event(
+                    "record_failed", run_id, record_id=record_id, provider=key.provider,
+                    latency_sec=time.time() - call_start, level="error",
+                    error_type=type(exc).__name__, error=str(exc),
+                )
+                dlq_entry = {
+                    "record_id": record_id,
+                    "stage": "agent_resolution",
+                    "reason": "unresolvable_model_exception" if not is_transient_error(exc) else "connection_or_timeout_error",
+                    "provider": key.provider,
+                    "detail": f"{type(exc).__name__}: {exc}",
+                }
+                if dlq_cb:
+                    dlq_cb(dlq_entry)
+                result = {
+                    "record_id": record_id,
+                    "provider": key.provider,
+                    "handled_by_key": key.key_id,
+                    "final_status": "dlq",
+                    "final_decision": {"status": "dlq", "error": str(exc)},
+                    "wall_clock_time_sec": round(time.time() - call_start, 2),
+                }
+
+            results.append(result)
+            if progress_cb:
+                progress_cb(result)
+
+    log_event("agent_stage_start", run_id, total_records=len(bank_records))
+    await asyncio.gather(*(process(r) for r in bank_records))
+
+    total_time = time.time() - start_time
+    avg_time = total_time / len(bank_records) if bank_records else 0.0
+    est_seq_time = sum(r.get("wall_clock_time_sec", 0.0) for r in results)
+    speedup = (est_seq_time / total_time) if total_time > 0 else 1.0
+
+    print("\n--- BATCH RESOLUTION COMPLETE ---")
+    print(f"Total Wall-Clock Time:    {total_time:.2f}s")
+    print(f"Est. Sequential Time:     {est_seq_time:.2f}s (Speedup: {speedup:.2f}x)")
+    print(f"Avg Time / Record:        {avg_time:.2f}s\n")
+    log_event("agent_stage_complete", run_id, total_time_sec=total_time, speedup=speedup)
+
+    return results
+
+
 async def _baseline_resolve_one(
     bank_record: Dict[str, Any],
     all_ledger: List[Dict[str, Any]],
@@ -141,6 +286,10 @@ async def run_single_agent_baseline(
     bank_records: List[Dict[str, Any]],
     all_ledger: List[Dict[str, Any]],
     all_gateway: List[Dict[str, Any]],
+    *,
+    run_id: str = "cli",
+    circuit_breaker: Optional[CircuitBreaker] = None,
+    dlq_cb: Optional[DLQCB] = None,
 ) -> List[Dict[str, Any]]:
     concurrency = len(KEY_STATES) if KEY_STATES else 1
     baseline_sem = asyncio.Semaphore(max(4, concurrency))
@@ -150,7 +299,49 @@ async def run_single_agent_baseline(
     async def process(rec):
         async with baseline_sem:
             key = get_least_loaded_key()
-            return await _baseline_resolve_one(rec, all_ledger, all_gateway, key)
+
+            if circuit_breaker is not None and circuit_breaker.is_open(key.provider):
+                if dlq_cb:
+                    dlq_cb({
+                        "record_id": rec.get("record_id", "UNKNOWN"),
+                        "stage": "baseline_resolution",
+                        "reason": "circuit_breaker_open",
+                        "provider": key.provider,
+                        "detail": f"Circuit open for provider '{key.provider}'; baseline call skipped.",
+                    })
+                return {
+                    "record_id": rec.get("record_id", "UNKNOWN"),
+                    "provider": key.provider,
+                    "handled_by_key": key.key_id,
+                    "final_status": "dlq",
+                    "final_decision": {"status": "dlq", "reason": "circuit_breaker_open"},
+                    "wall_clock_time_sec": 0.0,
+                }
+
+            try:
+                result = await _baseline_resolve_one(rec, all_ledger, all_gateway, key)
+                if circuit_breaker is not None:
+                    circuit_breaker.record_success(key.provider)
+                return result
+            except Exception as exc:  # noqa: BLE001
+                if circuit_breaker is not None:
+                    circuit_breaker.record_failure(key.provider, exc)
+                if dlq_cb:
+                    dlq_cb({
+                        "record_id": rec.get("record_id", "UNKNOWN"),
+                        "stage": "baseline_resolution",
+                        "reason": "unresolvable_model_exception" if not is_transient_error(exc) else "connection_or_timeout_error",
+                        "provider": key.provider,
+                        "detail": f"{type(exc).__name__}: {exc}",
+                    })
+                return {
+                    "record_id": rec.get("record_id", "UNKNOWN"),
+                    "provider": key.provider,
+                    "handled_by_key": key.key_id,
+                    "final_status": "dlq",
+                    "final_decision": {"status": "dlq", "error": str(exc)},
+                    "wall_clock_time_sec": 0.0,
+                }
 
     for record in bank_records:
         tasks.append(process(record))
@@ -262,7 +453,24 @@ def _extract_prediction_from_agent(trace: Dict[str, Any]) -> Dict[str, Any]:
     status = "confirmed" if trace.get("final_status") == "confirmed" else "exception"
     return {"status": status, "ledger_ids": ledger_ids, "gateway_ids": gateway_ids}
 
-async def main() -> None:
+
+async def run_evaluation(
+    run_id: str = "cli",
+    fast_progress_cb: Optional[FastProgressCB] = None,
+    agent_progress_cb: Optional[AgentProgressCB] = None,
+    exception_cb: Optional[ExceptionCB] = None,
+    dlq_cb: Optional[DLQCB] = None,
+    circuit_breaker: Optional[CircuitBreaker] = None,
+) -> Dict[str, Any]:
+    """Run the full fast-path + agent + baseline evaluation pipeline.
+
+    This is the body of the original `main()`, extracted so both the CLI
+    entry point below and the FastAPI job runner (api/job.py) share one
+    implementation. All callback/circuit-breaker arguments are optional;
+    calling this with no arguments reproduces the original script's
+    behavior exactly (plus resilience: a single bad record no longer
+    crashes the whole run, it's routed to the DLQ instead).
+    """
     run_started_at = datetime.now()
     timestamp = run_started_at.strftime("%Y%m%d_%H%M%S")
 
@@ -270,6 +478,7 @@ async def main() -> None:
     print("RECONCILIATION SYSTEM -- FULL EVALUATION RUN")
     print(f"Started: {run_started_at.isoformat()}")
     print("=" * 78)
+    log_event("run_start", run_id, provider=os.environ.get("PROVIDER"))
 
     configured_provider = (os.environ.get("PROVIDER") or getattr(config, "PROVIDER", "") or "").lower()
     if configured_provider not in ["auto", "groq", "local"]:
@@ -299,8 +508,22 @@ async def main() -> None:
     gateway_records_numeric = [{**r, "amount": float(r["amount"])} for r in gateway_records]
     bank_records_numeric = {r["record_id"]: {**r, "amount": float(r["amount"])} for r in bank_records}
 
+    def _fast_cb(completed: int, total: int, result: MatchResult) -> None:
+        if fast_progress_cb:
+            fast_progress_cb(completed, total)
+        if result.status == "flagged" and exception_cb:
+            exception_cb({
+                "record_id": result.bank_id,
+                "stage": "fast_path",
+                "reason": "flagged",
+                "provider": None,
+                "detail": "Reference number matched but amount fell outside tolerance.",
+            })
+
     fast_start = time.time()
-    fast_results = fast_match_bank_records(bank_records, ledger_records, gateway_records)
+    fast_results = fast_match_bank_records(
+        bank_records, ledger_records, gateway_records, progress_callback=_fast_cb
+    )
     fast_elapsed = time.time() - fast_start
     avg_fast_latency = fast_elapsed / total_records if total_records else 0.0
 
@@ -312,6 +535,10 @@ async def main() -> None:
     print(f"Fast-path confirmed: {len(fast_confirmed)}")
     print(f"Fast-path flagged:   {len(fast_flagged)}")
     print(f"Escalated to agent:  {len(needs_agent)}")
+    log_event(
+        "fast_stage_complete", run_id, total_time_sec=fast_elapsed,
+        confirmed=len(fast_confirmed), flagged=len(fast_flagged), escalated=len(needs_agent),
+    )
 
     escalated_bank_records = [bank_records_numeric[r.bank_id] for r in needs_agent]
 
@@ -319,7 +546,11 @@ async def main() -> None:
     full_stdout = _TeeCapture(sys.stdout)
     agent_start = time.time()
     with redirect_stdout(full_stdout):
-        agent_results = await resolve_batch(escalated_bank_records, ledger_records_numeric, gateway_records_numeric)
+        agent_results = await _resolve_batch_with_progress(
+            escalated_bank_records, ledger_records_numeric, gateway_records_numeric,
+            run_id=run_id, progress_cb=agent_progress_cb, exception_cb=exception_cb,
+            dlq_cb=dlq_cb, circuit_breaker=circuit_breaker,
+        )
     agent_elapsed = time.time() - agent_start
     full_pipeline_waits = _count_provider_waits(full_stdout.getvalue())
 
@@ -333,7 +564,7 @@ async def main() -> None:
     total_other_wait_full = sum(r.get("other_pacing_wait_sec", 0.0) for r in agent_results)
 
     agent_confirmed = [r for r in agent_results if r.get("final_status") == "confirmed"]
-    agent_exception = [r for r in agent_results if r.get("final_status") != "confirmed"]
+    agent_exception = [r for r in agent_results if r.get("final_status") not in ("confirmed",)]
 
     provider_counts_full: Dict[str, int] = {}
     key_counts_full: Dict[str, int] = {}
@@ -352,7 +583,10 @@ async def main() -> None:
     baseline_stdout = _TeeCapture(sys.stdout)
     baseline_start = time.time()
     with redirect_stdout(baseline_stdout):
-        baseline_results = await run_single_agent_baseline(escalated_bank_records, ledger_records_numeric, gateway_records_numeric)
+        baseline_results = await run_single_agent_baseline(
+            escalated_bank_records, ledger_records_numeric, gateway_records_numeric,
+            run_id=run_id, circuit_breaker=circuit_breaker, dlq_cb=dlq_cb,
+        )
     baseline_elapsed = time.time() - baseline_start
     baseline_waits = _count_provider_waits(baseline_stdout.getvalue())
 
@@ -370,7 +604,7 @@ async def main() -> None:
         key_counts_baseline[r.get("handled_by_key", "unknown")] = key_counts_baseline.get(r.get("handled_by_key", "unknown"), 0) + 1
 
     baseline_confirmed = [r for r in baseline_results if r.get("final_status") == "confirmed"]
-    baseline_exception = [r for r in baseline_results if r.get("final_status") != "confirmed"]
+    baseline_exception = [r for r in baseline_results if r.get("final_status") not in ("confirmed",)]
 
     print(f"\n--- BASELINE STAGE COMPLETE ---")
     print(f"Baseline-confirmed: {len(baseline_confirmed)}")
@@ -488,6 +722,10 @@ async def main() -> None:
             print(f"    predicted:    status={row['predicted_status']} ledger={row['predicted_ledger_ids']} gateway={row['predicted_gateway_ids']}")
             print(f"    correct={row['correct']}")
 
+    dead_letter_queue = [
+        r for r in (agent_results + baseline_results) if r.get("final_status") == "dlq"
+    ]
+
     results_payload = {
         "run_started_at": run_started_at.isoformat(),
         "timestamp": timestamp,
@@ -532,6 +770,7 @@ async def main() -> None:
             },
         },
         "ground_truth_orphan_rows_excluded": len(orphan_rows),
+        "dead_letter_queue": dead_letter_queue,
         "caveats": [
             "active_processing_time_sec / reactive_throttle_wait_sec / self_paced_wait_sec / "
             "other_pacing_wait_sec per record (and their sums here) come from wrapping asyncio.sleep() "
@@ -554,6 +793,10 @@ async def main() -> None:
             "speedup/est_sequential figures are recomputed outside resolve_batch() using its "
             "exact internal formula, since resolve_batch() only prints them and reconciler.py "
             "was not modified to return them.",
+            "Records that raised an unrecoverable exception (connection/timeout after the circuit "
+            "breaker tripped, or a JSON/model parsing failure) are excluded from full_pipeline_scores/"
+            "baseline_scores as unscored 'dlq' predictions and are listed under dead_letter_queue "
+            "instead, with their failure reason.",
         ],
     }
 
@@ -563,6 +806,13 @@ async def main() -> None:
 
     print(f"\nFull results written to: {results_path}")
     print(f"Run finished: {datetime.now().isoformat()}")
+    log_event("run_complete", run_id, results_path=str(results_path), overall_match_rate=overall_match_rate)
+
+    return results_payload
+
+
+async def main() -> None:
+    await run_evaluation()
 
 def pct_safe(n: int, d: int) -> Optional[float]:
     return round(n / d, 4) if d else None
