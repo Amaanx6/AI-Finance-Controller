@@ -15,14 +15,9 @@ from typing import Any, Dict, List, Optional, Set
 
 from backend.app.matcher.fast_matcher import load_csv, fast_match_bank_records, MatchResult
 from backend.app.matcher.reconciler import resolve_batch, start_wait_tracking, stop_wait_tracking
-from backend.app.agent.proposer import run_proposer, get_candidate_pool
+from backend.app.agent.proposer import run_proposer, get_candidate_pool, KEY_STATES, get_least_loaded_key
 from backend.app.agent import config
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-# Same depth-from-file convention as reconciler.py's BASE_DIR
-# (backend/app/eval/evaluate.py -> eval -> app -> backend -> project root).
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 SAMPLES_DIR = BASE_DIR / "backend" / "app" / "data_generation" / "samples"
@@ -46,10 +41,6 @@ PATTERN_ORDER = [
     "genuine_anomaly",
 ]
 
-# ---------------------------------------------------------------------------
-# stdout tee, for capturing rate-limit / pacing lines per provider without
-# touching proposer.py to add counters itself.
-# ---------------------------------------------------------------------------
 class _TeeCapture(io.StringIO):
     def __init__(self, real_stdout):
         super().__init__()
@@ -60,39 +51,28 @@ class _TeeCapture(io.StringIO):
         self._real.flush()
         return super().write(s)
 
-
 _GROQ_WAIT_PATTERNS = [
     re.compile(r"Groq rate limited \(429\)"),
     re.compile(r"Proactive Pacing"),
+    re.compile(r"rate limited \(transient\)"),
+    re.compile(r"EXHAUSTED"),
 ]
 _GEMINI_WAIT_PATTERNS = [
     re.compile(r"Gemini: at RPM budget"),
     re.compile(r"Gemini rate limited"),
 ]
 
-
 def _count_provider_waits(captured_text: str) -> Dict[str, int]:
     groq_waits = sum(len(p.findall(captured_text)) for p in _GROQ_WAIT_PATTERNS)
     gemini_waits = sum(len(p.findall(captured_text)) for p in _GEMINI_WAIT_PATTERNS)
     return {"groq": groq_waits, "gemini": gemini_waits}
 
-
-# ---------------------------------------------------------------------------
-# Ground truth loading
-# ---------------------------------------------------------------------------
 def _split_ids(field: str) -> Set[str]:
     if not field:
         return set()
     return {x.strip() for x in field.split(",") if x.strip()}
 
-
 def load_ground_truth(path: Path) -> Dict[str, Dict[str, Any]]:
-    """
-    Returns dict keyed by bank_record_id (only rows that HAVE a bank_record_id --
-    orphan ledger/gateway-only anomaly rows have none and are structurally
-    unreachable by a bank-record-driven pipeline, so they're returned
-    separately for transparency rather than silently dropped).
-    """
     by_bank: Dict[str, Dict[str, Any]] = {}
     orphans: List[Dict[str, Any]] = []
 
@@ -114,99 +94,74 @@ def load_ground_truth(path: Path) -> Dict[str, Dict[str, Any]]:
     by_bank["__orphans__"] = orphans  # type: ignore[assignment]
     return by_bank
 
-
-# ---------------------------------------------------------------------------
-# Naive single-agent baseline (proposer only, no verifier).
-# Reuses run_proposer() and get_candidate_pool() as-is; this orchestration
-# loop itself is new code (there is no proposer-only mode in reconciler.py
-# to reuse), mirroring the same per-provider semaphore caps and the same
-# gemini-weighted provider cycle so the comparison is apples-to-apples.
-# Uses its own local semaphores (not reconciler's) so the two runs never
-# contend with each other if you inspect them independently.
-# ---------------------------------------------------------------------------
-_baseline_groq_sem = asyncio.Semaphore(1)
-_baseline_gemini_sem = asyncio.Semaphore(2)
-
-
 async def _baseline_resolve_one(
     bank_record: Dict[str, Any],
     all_ledger: List[Dict[str, Any]],
     all_gateway: List[Dict[str, Any]],
-    provider: str,
+    assigned_key: Any,
 ) -> Dict[str, Any]:
-    sem = _baseline_groq_sem if provider == "groq" else _baseline_gemini_sem
-    async with sem:
-        start = time.time()
-        record_id = bank_record.get("record_id", "UNKNOWN")
-        wait_token = start_wait_tracking()
-        try:
-            candidates = get_candidate_pool(bank_record, all_ledger, all_gateway)
+    
+    start = time.time()
+    record_id = bank_record.get("record_id", "UNKNOWN")
+    wait_token = start_wait_tracking()
+    
+    try:
+        candidates = get_candidate_pool(bank_record, all_ledger, all_gateway)
+        prop_res, _ = await run_proposer(bank_record, candidates, temperature=0.1, assigned_key=assigned_key)
 
-            config.PROVIDER = provider
-            prop_res = await run_proposer(bank_record, candidates, temperature=0.1)
+        status = prop_res.get("status")
+        matched_ledger_ids = prop_res.get("matched_ledger_ids") or []
+        if status in ("no_match", "flagged") or not matched_ledger_ids:
+            final_status = "exception"
+        else:
+            final_status = "confirmed"
+    finally:
+        wait_breakdown = stop_wait_tracking(wait_token)
 
-            status = prop_res.get("status")
-            matched_ledger_ids = prop_res.get("matched_ledger_ids") or []
-            if status in ("no_match", "flagged") or not matched_ledger_ids:
-                final_status = "exception"
-            else:
-                final_status = "confirmed"
-        finally:
-            wait_breakdown = stop_wait_tracking(wait_token)
-
-        reactive = wait_breakdown["reactive"]
-        self_paced = wait_breakdown["self_paced"]
-        other = wait_breakdown["other"]
-        total_wait = reactive + self_paced + other
-        elapsed = time.time() - start
-        active_time = max(0.0, elapsed - total_wait)
-        return {
-            "record_id": record_id,
-            "provider": provider,
-            "final_status": final_status,
-            "final_decision": prop_res,
-            "wall_clock_time_sec": round(elapsed, 2),
-            "active_processing_time_sec": round(active_time, 2),
-            "reactive_throttle_wait_sec": round(reactive, 2),
-            "self_paced_wait_sec": round(self_paced, 2),
-            "other_pacing_wait_sec": round(other, 2),
-        }
-
+    reactive = wait_breakdown["reactive"]
+    self_paced = wait_breakdown["self_paced"]
+    other = wait_breakdown["other"]
+    total_wait = reactive + self_paced + other
+    elapsed = time.time() - start
+    active_time = max(0.0, elapsed - total_wait)
+    return {
+        "record_id": record_id,
+        "provider": assigned_key.provider,
+        "handled_by_key": assigned_key.key_id,
+        "final_status": final_status,
+        "final_decision": prop_res,
+        "wall_clock_time_sec": round(elapsed, 2),
+        "active_processing_time_sec": round(active_time, 2),
+        "reactive_throttle_wait_sec": round(reactive, 2),
+        "self_paced_wait_sec": round(self_paced, 2),
+        "other_pacing_wait_sec": round(other, 2),
+    }
 
 async def run_single_agent_baseline(
     bank_records: List[Dict[str, Any]],
     all_ledger: List[Dict[str, Any]],
     all_gateway: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    # Mirrors reconciler.py's current "auto" cycle exactly (see the
-    # TEMPORARY OVERRIDE comment there) -- Gemini free tier (20 req/day) is
-    # exhausted, so this is single-provider Groq only for now, same as the
-    # full pipeline, to keep baseline-vs-full a fair comparison.
-    provider_cycle = ["groq"]
+    concurrency = len(KEY_STATES) if KEY_STATES else 1
+    baseline_sem = asyncio.Semaphore(max(4, concurrency))
+    
     tasks = []
-    assigned = []
-    for i, record in enumerate(bank_records):
-        p = provider_cycle[i % len(provider_cycle)]
-        assigned.append(p)
-        tasks.append(_baseline_resolve_one(record, all_ledger, all_gateway, p))
+    
+    async def process(rec):
+        async with baseline_sem:
+            key = get_least_loaded_key()
+            return await _baseline_resolve_one(rec, all_ledger, all_gateway, key)
 
-    print(f"\n[Baseline] Resolving {len(bank_records)} records (proposer-only, no verifier). "
-          f"Provider cycle: {provider_cycle} -> assignment: {assigned}")
+    for record in bank_records:
+        tasks.append(process(record))
+
+    print(f"\n[Baseline] Resolving {len(bank_records)} records (proposer-only, no verifier).")
     return await asyncio.gather(*tasks)
 
-
-# ---------------------------------------------------------------------------
-# Scoring
-# ---------------------------------------------------------------------------
 def _score_predictions(
     predictions: Dict[str, Dict[str, Any]],
     ground_truth: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """
-    predictions: bank_record_id -> {"ledger_ids": set, "gateway_ids": set, "status": <terminal status str>}
-    Only bank records that appear in ground_truth (i.e. have a row in mapping.csv
-    with a non-blank bank_record_id) are scored -- see load_ground_truth().
-    """
     bank_ids = [k for k in ground_truth.keys() if k != "__orphans__"]
 
     per_pattern: Dict[str, Dict[str, int]] = {
@@ -238,8 +193,6 @@ def _score_predictions(
         if gt_has_true_match:
             is_correct = pred_has_match and pred_ledger == gt["ledger_ids"] and pred_gateway == gt["gateway_ids"]
         else:
-            # genuine anomaly with a bank record but no true counterpart:
-            # correct behavior is to NOT assert a match.
             is_correct = not pred_has_match
 
         per_pattern[pattern]["total"] += 1
@@ -291,7 +244,6 @@ def _score_predictions(
 
     return {"overall": overall, "by_pattern": by_pattern, "detail_rows": detail_rows}
 
-
 def _extract_prediction_from_fast(mr: MatchResult) -> Optional[Dict[str, Any]]:
     if mr.status == "confirmed":
         return {
@@ -301,8 +253,7 @@ def _extract_prediction_from_fast(mr: MatchResult) -> Optional[Dict[str, Any]]:
         }
     if mr.status == "flagged":
         return {"status": "flagged", "ledger_ids": set(), "gateway_ids": set()}
-    return None  # ambiguous / unresolved -> goes to agent stage instead
-
+    return None 
 
 def _extract_prediction_from_agent(trace: Dict[str, Any]) -> Dict[str, Any]:
     decision = trace.get("final_decision") or {}
@@ -311,10 +262,6 @@ def _extract_prediction_from_agent(trace: Dict[str, Any]) -> Dict[str, Any]:
     status = "confirmed" if trace.get("final_status") == "confirmed" else "exception"
     return {"status": status, "ledger_ids": ledger_ids, "gateway_ids": gateway_ids}
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 async def main() -> None:
     run_started_at = datetime.now()
     timestamp = run_started_at.strftime("%Y%m%d_%H%M%S")
@@ -324,18 +271,14 @@ async def main() -> None:
     print(f"Started: {run_started_at.isoformat()}")
     print("=" * 78)
 
-    # --- provider check: must be auto, and we do NOT force it ourselves ---
     configured_provider = (os.environ.get("PROVIDER") or getattr(config, "PROVIDER", "") or "").lower()
-    if configured_provider != "auto":
+    if configured_provider not in ["auto", "groq", "local"]:
         raise RuntimeError(
-            f"PROVIDER is configured as '{configured_provider or '<unset>'}', not 'auto'. "
-            "This eval is required to capture real dual-provider performance data "
-            "(see instruction: do not force PROVIDER=groq/gemini inside evaluate.py). "
-            "Set PROVIDER=auto in your .env and re-run."
+            f"PROVIDER is configured as '{configured_provider or '<unset>'}'. "
+            "Set PROVIDER to 'local' or 'groq' in your .env and re-run."
         )
-    print(f"[config] PROVIDER confirmed as 'auto' (not forced by this script).")
+    print(f"[config] PROVIDER confirmed as '{configured_provider}'.")
 
-    # --- load CSVs ---
     if not (BANK_CSV.exists() and LEDGER_CSV.exists() and GATEWAY_CSV.exists()):
         raise FileNotFoundError(
             f"Expected sample CSVs under {SAMPLES_DIR} "
@@ -352,14 +295,10 @@ async def main() -> None:
     print(f"\nLoaded {total_records} bank records, {len(ledger_records)} ledger records, "
           f"{len(gateway_records)} gateway records.")
 
-    # Numeric-amount copies for the agent-facing path only (sum_check does
-    # arithmetic on c["amount"] directly). fast_matcher gets the raw string
-    # rows, unchanged, exactly as its own __main__ block does.
     ledger_records_numeric = [{**r, "amount": float(r["amount"])} for r in ledger_records]
     gateway_records_numeric = [{**r, "amount": float(r["amount"])} for r in gateway_records]
     bank_records_numeric = {r["record_id"]: {**r, "amount": float(r["amount"])} for r in bank_records}
 
-    # --- fast path ---
     fast_start = time.time()
     fast_results = fast_match_bank_records(bank_records, ledger_records, gateway_records)
     fast_elapsed = time.time() - fast_start
@@ -376,7 +315,6 @@ async def main() -> None:
 
     escalated_bank_records = [bank_records_numeric[r.bank_id] for r in needs_agent]
 
-    # --- full pipeline: proposer + verifier via resolve_batch (reused as-is) ---
     print(f"\n[Full pipeline] Escalating {len(escalated_bank_records)} records to resolve_batch()...")
     full_stdout = _TeeCapture(sys.stdout)
     agent_start = time.time()
@@ -398,16 +336,18 @@ async def main() -> None:
     agent_exception = [r for r in agent_results if r.get("final_status") != "confirmed"]
 
     provider_counts_full: Dict[str, int] = {}
+    key_counts_full: Dict[str, int] = {}
     for r in agent_results:
         provider_counts_full[r.get("provider", "unknown")] = provider_counts_full.get(r.get("provider", "unknown"), 0) + 1
+        key_counts_full[r.get("handled_by_key", "unknown")] = key_counts_full.get(r.get("handled_by_key", "unknown"), 0) + 1
 
     print(f"\n--- AGENT STAGE (full pipeline) COMPLETE ---")
     print(f"Agent-confirmed: {len(agent_confirmed)}")
     print(f"Exception:       {len(agent_exception)}")
     print(f"Records per provider: {provider_counts_full}")
+    print(f"Records per key: {key_counts_full}")
     print(f"Rate-limit / pacing waits observed: {full_pipeline_waits}")
 
-    # --- naive single-agent baseline, same escalated records ---
     print(f"\n[Baseline] Running proposer-only baseline on the SAME {len(escalated_bank_records)} escalated records...")
     baseline_stdout = _TeeCapture(sys.stdout)
     baseline_start = time.time()
@@ -424,8 +364,10 @@ async def main() -> None:
     total_other_wait_baseline = sum(r.get("other_pacing_wait_sec", 0.0) for r in baseline_results)
 
     provider_counts_baseline: Dict[str, int] = {}
+    key_counts_baseline: Dict[str, int] = {}
     for r in baseline_results:
         provider_counts_baseline[r.get("provider", "unknown")] = provider_counts_baseline.get(r.get("provider", "unknown"), 0) + 1
+        key_counts_baseline[r.get("handled_by_key", "unknown")] = key_counts_baseline.get(r.get("handled_by_key", "unknown"), 0) + 1
 
     baseline_confirmed = [r for r in baseline_results if r.get("final_status") == "confirmed"]
     baseline_exception = [r for r in baseline_results if r.get("final_status") != "confirmed"]
@@ -434,9 +376,9 @@ async def main() -> None:
     print(f"Baseline-confirmed: {len(baseline_confirmed)}")
     print(f"Exception:          {len(baseline_exception)}")
     print(f"Records per provider: {provider_counts_baseline}")
+    print(f"Records per key: {key_counts_baseline}")
     print(f"Rate-limit / pacing waits observed: {baseline_waits}")
 
-    # --- ground truth + scoring ---
     ground_truth = load_ground_truth(GROUND_TRUTH_CSV)
     orphan_rows = ground_truth.pop("__orphans__", [])
     if orphan_rows:
@@ -453,9 +395,6 @@ async def main() -> None:
         full_predictions[record_id] = _extract_prediction_from_agent(trace)
 
     baseline_predictions: Dict[str, Dict[str, Any]] = {}
-    # baseline reuses the exact same fast-path results for the non-escalated records
-    # (fast path isn't part of what's being compared -- only the agent stage is),
-    # and its own proposer-only decisions for the escalated ones.
     for r in fast_results:
         p = _extract_prediction_from_fast(r)
         if p is not None:
@@ -473,7 +412,6 @@ async def main() -> None:
 
     overall_match_rate = pct_safe(len(fast_confirmed) + len(agent_confirmed), total_records)
 
-    # --- print comparison table ---
     print("\n" + "=" * 78)
     print("COMPARISON: single-agent-only (proposer, no verifier) vs proposer+verifier")
     print("=" * 78)
@@ -507,7 +445,6 @@ async def main() -> None:
           f"({dm_b['total_records']} records) vs full-pipeline accuracy {fmt_pct(dm_f['accuracy'])} "
           f"({dm_f['total_records']} records).")
 
-    # --- performance report ---
     print("\n" + "=" * 78)
     print("PERFORMANCE REPORT")
     print("=" * 78)
@@ -522,7 +459,7 @@ async def main() -> None:
         print(f"  Other pacing wait (e.g. hallucination-retry):  {total_other_wait_full:.2f}s")
     print(f"Full-pipeline speedup vs sequential est.: {speedup_full:.2f}x "
           f"(est. sequential {est_seq_time_full:.2f}s / actual {agent_elapsed:.2f}s)")
-    print(f"Full-pipeline records handled per provider: {provider_counts_full}")
+    print(f"Full-pipeline records handled per key:       {key_counts_full}")
     print(f"Full-pipeline rate-limit/pacing waits:       {full_pipeline_waits}")
     print(f"Baseline agent stage wall-clock:          {baseline_elapsed:.3f}s total")
     print(f"  Active processing time:                 {total_active_time_baseline:.2f}s")
@@ -532,10 +469,9 @@ async def main() -> None:
         print(f"  Other pacing wait (e.g. hallucination-retry):  {total_other_wait_baseline:.2f}s")
     print(f"Baseline speedup vs sequential est.:      {speedup_baseline:.2f}x "
           f"(est. sequential {est_seq_time_baseline:.2f}s / actual {baseline_elapsed:.2f}s)")
-    print(f"Baseline records handled per provider:    {provider_counts_baseline}")
+    print(f"Baseline records handled per key:         {key_counts_baseline}")
     print(f"Baseline rate-limit/pacing waits:          {baseline_waits}")
 
-    # --- spot-check sample for manual verification (NOT a substitute for it) ---
     print("\n" + "=" * 78)
     print("SPOT-CHECK SAMPLE -- please manually verify these against ground_truth/mapping.csv yourself")
     print("(this script reporting a match is not the same as a human confirming one)")
@@ -552,7 +488,6 @@ async def main() -> None:
             print(f"    predicted:    status={row['predicted_status']} ledger={row['predicted_ledger_ids']} gateway={row['predicted_gateway_ids']}")
             print(f"    correct={row['correct']}")
 
-    # --- save results JSON ---
     results_payload = {
         "run_started_at": run_started_at.isoformat(),
         "timestamp": timestamp,
@@ -581,7 +516,7 @@ async def main() -> None:
                 "total_other_pacing_wait_sec": round(total_other_wait_full, 4),
                 "est_sequential_time_sec": round(est_seq_time_full, 4),
                 "speedup": round(speedup_full, 4),
-                "records_per_provider": provider_counts_full,
+                "records_per_key": key_counts_full,
                 "rate_limit_waits": full_pipeline_waits,
             },
             "baseline_agent_stage": {
@@ -592,7 +527,7 @@ async def main() -> None:
                 "total_other_pacing_wait_sec": round(total_other_wait_baseline, 4),
                 "est_sequential_time_sec": round(est_seq_time_baseline, 4),
                 "speedup": round(speedup_baseline, 4),
-                "records_per_provider": provider_counts_baseline,
+                "records_per_key": key_counts_baseline,
                 "rate_limit_waits": baseline_waits,
             },
         },
@@ -629,18 +564,14 @@ async def main() -> None:
     print(f"\nFull results written to: {results_path}")
     print(f"Run finished: {datetime.now().isoformat()}")
 
-
 def pct_safe(n: int, d: int) -> Optional[float]:
     return round(n / d, 4) if d else None
-
 
 def fmt_pct(v: Optional[float]) -> str:
     return f"{v*100:.1f}%" if v is not None else "n/a"
 
-
 def fmt_pr(p: Optional[float], r: Optional[float]) -> str:
     return f"P{fmt_pct(p)}/R{fmt_pct(r)}"
-
 
 if __name__ == "__main__":
     asyncio.run(main())

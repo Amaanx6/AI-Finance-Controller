@@ -22,22 +22,29 @@ from backend.app.agent import config
 SAMPLE_DIR = BACKEND_DIR / "app" / "data_generation" / "samples"
 BANK_CSV = SAMPLE_DIR / "bank_statement.csv"
 LEDGER_CSV = SAMPLE_DIR / "internal_ledger.csv"
+GATEWAY_CSV = SAMPLE_DIR / "gateway_export.csv"
 
 def load_data():
-    if not BANK_CSV.exists() or not LEDGER_CSV.exists():
+    if not BANK_CSV.exists() or not LEDGER_CSV.exists() or not GATEWAY_CSV.exists():
         raise FileNotFoundError("Run data generator first: python -m backend.app.data_generation.generator")
     with open(BANK_CSV, "r", encoding="utf-8") as f:
         bank_records = list(csv.DictReader(f))
     with open(LEDGER_CSV, "r", encoding="utf-8") as f:
         ledger_records = list(csv.DictReader(f))
+    with open(GATEWAY_CSV, "r", encoding="utf-8") as f:
+        gateway_records = list(csv.DictReader(f))
+        
     for b in bank_records:
         b["amount"] = float(b["amount"])
     for l in ledger_records:
         l["amount"] = float(l["amount"])
-    return bank_records, ledger_records
+    for g in gateway_records:
+        g["amount"] = float(g["amount"])
+        
+    return bank_records, ledger_records, gateway_records
 
 
-async def test_verifier_catches_decoy(bank_records, ledger_records):
+async def test_verifier_catches_decoy(bank_records, ledger_records, gateway_records):
     print("\n=======================================================")
     print("TEST 1: Verifier Catches Hardcoded Decoy")
     print("=======================================================")
@@ -45,7 +52,8 @@ async def test_verifier_catches_decoy(bank_records, ledger_records):
     bank_0042 = next((b for b in bank_records if b.get("record_id") == "BANK_0042"), bank_records[0])
     
     # 1. PRE-FILTER CANDIDATES DOWN TO MAX 25 (Saves 80%+ tokens)
-    candidates = get_candidate_pool(bank_0042, ledger_records)
+    # NOW passing both ledger and gateway records
+    candidates = get_candidate_pool(bank_0042, ledger_records, gateway_records)
     
     bad_proposal = {
         "status": "suggested_match",
@@ -69,7 +77,7 @@ async def test_verifier_catches_decoy(bank_records, ledger_records):
     print("PASSED: Verifier correctly rejected decoy proposal.")
 
 
-async def test_batch_resolution(bank_records, ledger_records):
+async def test_batch_resolution(bank_records, ledger_records, gateway_records):
     print("\n=======================================================")
     print("TEST 2: Concurrent Batch Reconciliation (BANK_0028, BANK_0042)")
     print("=======================================================")
@@ -79,7 +87,8 @@ async def test_batch_resolution(bank_records, ledger_records):
     if len(test_batch) < 2:
         test_batch = bank_records[:4]
 
-    results = await resolve_batch(test_batch, ledger_records,)
+    # NOW passing gateway_records to resolve_batch
+    results = await resolve_batch(test_batch, ledger_records, gateway_records)
     
     confirmed = sum(1 for r in results if r.get("final_status") == "confirmed")
     exceptions = sum(1 for r in results if r.get("final_status") == "exception")
@@ -87,9 +96,9 @@ async def test_batch_resolution(bank_records, ledger_records):
 
 
 async def main():
-    bank_records, ledger_records = load_data()
-    await test_verifier_catches_decoy(bank_records, ledger_records)
-    await test_batch_resolution(bank_records, ledger_records)
+    bank_records, ledger_records, gateway_records = load_data()
+    await test_verifier_catches_decoy(bank_records, ledger_records, gateway_records)
+    await test_batch_resolution(bank_records, ledger_records, gateway_records)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -103,10 +112,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
  
     async def main_dispatch():
-        bank_records, ledger_records = load_data()
-        await test_verifier_catches_decoy(bank_records, ledger_records)
+        bank_records, ledger_records, gateway_records = load_data()
+        await test_verifier_catches_decoy(bank_records, ledger_records, gateway_records)
         if not args.quick:
-            await test_batch_resolution(bank_records, ledger_records)
+            await test_batch_resolution(bank_records, ledger_records, gateway_records)
         else:
             print("\n[--quick] Skipped Test 2 (batch resolution) — "
                   "run without --quick before considering a fix confirmed.")

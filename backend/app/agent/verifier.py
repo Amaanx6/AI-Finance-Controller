@@ -10,7 +10,7 @@ from backend.app.agent import config
 
 logger = logging.getLogger("verifier")
 
-MAX_VERIFIER_TURNS = 3
+MAX_VERIFIER_TURNS = 6
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOG_DIR = BASE_DIR / "logs" / "verifier"
@@ -41,8 +41,6 @@ def cached_description_similarity(desc_a: str, desc_b: str) -> Dict[str, Any]:
         return result
     return _desc_sim_cache[key]
 
-# Verifier tools: AGENT_TOOLS[:2] plus submit_verifier_decision.
-# Note: "commentary" is NOT a registered tool schema. We catch it defensively when leaked.
 VERIFIER_TOOLS = AGENT_TOOLS[:2] + [
     {
         "type": "function",
@@ -78,10 +76,11 @@ async def run_verifier(
     candidates: List[Dict[str, Any]], 
     proposed_match: Dict[str, Any], 
     proposer_reasoning: str,
-    provider: Optional[str] = None
+    provider: Optional[str] = None,
+    assigned_key: Optional[Any] = None
 ) -> Dict[str, Any]:
     record_id = bank_record.get("record_id", "UNKNOWN")
-    active_provider = provider or config.PROVIDER
+    active_provider = assigned_key.provider if assigned_key else (provider or config.PROVIDER)
 
     trimmed_bank_record = {
         "record_id": bank_record.get("record_id"),
@@ -123,7 +122,6 @@ async def run_verifier(
 
     trace_log = []
     final_decision = None
-    commentary_count = 0
 
     def _write_log(decision):
         log_file = LOG_DIR / f"{record_id}.json"
@@ -146,7 +144,7 @@ async def run_verifier(
                 }
                 break
 
-            response = await call_llm_with_retry(messages, temperature=0.1, tools=VERIFIER_TOOLS) #type: ignore
+            response = await call_llm_with_retry(messages, temperature=0.1, tools=VERIFIER_TOOLS, assigned_key=assigned_key) #type: ignore
             message = response.choices[0].message
 
             msg_dump = message.model_dump(exclude_unset=True)
@@ -180,32 +178,6 @@ async def run_verifier(
             reached_final_via_tool = False
             for tool_call in message.tool_calls:
                 fn_name = tool_call.function.name
-                
-                # --- DEFENSIVE DISCARD & RECOVERY FOR LEAKED "commentary" ---
-                if fn_name == "commentary":
-                    commentary_count += 1
-                    raw_args = tool_call.function.arguments
-                    print(f"\n[!] WARNING: Caught leaked 'commentary' tool call (occurrence #{commentary_count}) for record {record_id}.")
-                    print(f"[!] Received raw arguments: {raw_args}")
-                    
-                    if commentary_count > 2:
-                        print(f"[!] 'commentary' emission exceeded threshold (>2). Aborting loop and flagging record.")
-                        final_decision = {"decision": "disagree", "reasoning": "Exceeded commentary loop limit; treated as invalid reasoning loop."}
-                        reached_final_via_tool = True
-                        break
-
-                    tool_result = {
-                        "error": "commentary is not a valid tool. Please use submit_verifier_decision or one of the provided tools (sum_check, description_similarity)."
-                    }
-                    tool_msg = {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": fn_name,
-                        "content": json.dumps(tool_result)
-                    }
-                    messages.append(tool_msg)
-                    trace_log.append(tool_msg)
-                    continue
 
                 if fn_name == "submit_verifier_decision":
                     try:
