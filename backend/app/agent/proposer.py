@@ -99,17 +99,30 @@ class KeyState:
         self.model_name = model_name
         self.key_id = key_id
         
-        self.semaphore = asyncio.Semaphore(1) if provider == "groq" else asyncio.Semaphore(4)
+        # Concurrency bounds per provider type
+        if provider == "groq":
+            self.semaphore = asyncio.Semaphore(1)
+        elif provider == "gemini":
+            self.semaphore = asyncio.Semaphore(2)
+        else:  # local
+            self.semaphore = asyncio.Semaphore(4)
+            
+        # Groq TPM tracker
         self.groq_tokens_this_minute = 0
         self.groq_minute_start = time.time()
         self.groq_lock = asyncio.Lock()
         
+        # Gemini RPM tracker
+        self.gemini_request_timestamps: List[float] = []
         self.cooldown_until = 0.0
         
+        # Client routing
         if provider == "local":
             self.client = AsyncOpenAI(api_key="ollama", base_url=config.LOCAL_API_BASE)
         elif provider == "groq":
             self.client = AsyncGroq(api_key=api_key, max_retries=0)
+        elif provider == "gemini":
+            self.client = AsyncOpenAI(api_key=api_key, base_url=config.GEMINI_BASE_URL)
             
     async def proactive_throttle(self, estimated_tokens=1200):
         if self.provider == "local":
@@ -129,17 +142,37 @@ class KeyState:
                     self.groq_tokens_this_minute = 0
                     self.groq_minute_start = time.time()
                 self.groq_tokens_this_minute += estimated_tokens
+                
+        elif self.provider == "gemini":
+            now = time.time()
+            self.gemini_request_timestamps = [t for t in self.gemini_request_timestamps if now - t < 60]
+            if len(self.gemini_request_timestamps) >= config.GEMINI_RPM_BUDGET:
+                oldest = self.gemini_request_timestamps[0]
+                wait = max(60 - (now - oldest), 0)
+                if wait > 0:
+                    print(f"[~] {self.key_id} at RPM budget. Pausing {wait:.1f}s...")
+                    await asyncio.sleep(wait)
+                now = time.time()
+                self.gemini_request_timestamps = [t for t in self.gemini_request_timestamps if now - t < 60]
+            self.gemini_request_timestamps.append(time.time())
             
     def get_load_score(self):
         if self.provider == "local":
             return 999999
         if self.provider == "groq":
             return config.GROQ_TPM_BUDGET - self.groq_tokens_this_minute
+        if self.provider == "gemini":
+            return (config.GEMINI_RPM_BUDGET - len(self.gemini_request_timestamps)) * 1000
         return 0
 
 KEY_STATES = []
 for i, (prov, api_key, model) in enumerate(config.KEY_POOL, start=1):
-    key_id = f"local_gpu" if prov == "local" else f"groq_key_{i}"
+    if prov == "local":
+        key_id = "local_gpu"
+    elif prov == "groq":
+        key_id = f"groq_key_{i}"
+    else:
+        key_id = f"gemini_key_{i}"
     KEY_STATES.append(KeyState(prov, api_key, model, key_id))
 
 def get_least_loaded_key() -> KeyState:
@@ -254,7 +287,12 @@ async def call_llm_with_retry(messages: List[Any], max_retries: int = 7, tempera
                 current_key = get_least_loaded_key()
 
         est_tokens = _estimate_prompt_tokens(messages)
-        safe_max_tokens = min(config.GROQ_MAX_TOKENS, max(384, 7500 - est_tokens)) if current_key.provider == "groq" else 4096
+        if current_key.provider == "groq":
+            safe_max_tokens = min(config.GROQ_MAX_TOKENS, max(384, 7500 - est_tokens))
+        elif current_key.provider == "gemini":
+            safe_max_tokens = config.GEMINI_MAX_TOKENS
+        else:
+            safe_max_tokens = 4096
 
         try:
             async with current_key.semaphore:
@@ -308,7 +346,7 @@ async def call_llm_with_retry(messages: List[Any], max_retries: int = 7, tempera
                 await _hallucination_sleep(1.0)
                 continue
 
-            if any(term in err_msg for term in ["429", "413", "too many requests", "request too large", "rate_limit_exceeded"]):
+            if any(term in err_msg for term in ["429", "413", "too many requests", "request too large", "rate_limit_exceeded", "resource_exhausted"]):
                 if attempt == max_retries - 1:
                     raise RuntimeError(RATE_LIMIT_EXHAUSTED) from e
                 
