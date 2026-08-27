@@ -67,8 +67,9 @@ async def execute_run(run_id: str) -> None:
     await run_store.update_run(run_id, status=RunStatus.RUNNING)
     circuit_breaker = CircuitBreaker(failure_threshold=3, cooldown_seconds=30.0)
 
-    def on_fast_progress(completed: int, total: int) -> None:
-        asyncio.create_task(run_store.bump_fast_progress(run_id, total))
+    def on_fast_progress(completed: int, total: int, result: Optional[Any] = None) -> None:
+        if result is not None and getattr(result, "status", None) in ("confirmed", "flagged"):
+            asyncio.create_task(run_store.bump_fast_progress(run_id, 1))
 
     def on_agent_progress(_result: dict) -> None:
         asyncio.create_task(run_store.bump_agent_progress(run_id))
