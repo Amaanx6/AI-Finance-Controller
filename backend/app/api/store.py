@@ -1,14 +1,7 @@
-"""Run-state storage.
+"""Async-safe transient state for live runs.
 
-Kept as a plain in-memory dict guarded by an asyncio.Lock for the initial
-version, per the spec ("while an in-memory dict is acceptable for initial
-setup, structure it so it can easily map to a persistent store like Redis").
-
-To move to Redis later: keep this same `RunStore` interface (get_run,
-save_run, find_run_id_by_idempotency_key, save_idempotency_mapping) and swap
-the dict-based implementation for redis-py calls (HSET/HGETALL for run
-state, SET with TTL for the idempotency-key -> run_id mapping). No caller
-outside this file needs to change.
+Completed results remain durable in results/eval_run_*.json.
+This store only tracks live execution state while the FastAPI process is alive.
 """
 from __future__ import annotations
 
@@ -34,18 +27,17 @@ class RunState:
     provider_mode: str
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+
     total_records: int = 0
+    records_processed: int = 0
     fast_path_resolved_so_far: int = 0
     agent_resolved_so_far: int = 0
+
     results: Optional[Dict[str, Any]] = None
     exceptions: List[Dict[str, Any]] = field(default_factory=list)
     dead_letter_queue: List[Dict[str, Any]] = field(default_factory=list)
     error: Optional[str] = None
     idempotency_key: Optional[str] = None
-
-    @property
-    def records_processed(self) -> int:
-        return self.fast_path_resolved_so_far + self.agent_resolved_so_far
 
     def to_status_payload(self) -> Dict[str, Any]:
         return {
@@ -58,11 +50,9 @@ class RunState:
 
 
 class RunStore:
-    """Async-safe in-memory store for run state and idempotency mapping."""
-
     def __init__(self) -> None:
         self._runs: Dict[str, RunState] = {}
-        self._idempotency_index: Dict[str, str] = {}  # idempotency_key -> run_id
+        self._idempotency_index: Dict[str, str] = {}
         self._lock = asyncio.Lock()
 
     @staticmethod
@@ -87,21 +77,25 @@ class RunStore:
             return self._runs.get(run_id)
 
     async def find_by_idempotency_key(
-        self, idempotency_key: str, window_seconds: float
+        self,
+        idempotency_key: str,
+        window_seconds: float,
     ) -> Optional[RunState]:
         async with self._lock:
             run_id = self._idempotency_index.get(idempotency_key)
             if run_id is None:
                 return None
+
             state = self._runs.get(run_id)
             if state is None:
                 return None
+
             if state.status == RunStatus.FAILED:
-                # Let a failed run be retried rather than returning the
-                # same failure forever.
                 return None
+
             if (time.time() - state.created_at) > window_seconds:
                 return None
+
             return state
 
     async def update_run(self, run_id: str, **fields: Any) -> None:
@@ -109,25 +103,53 @@ class RunStore:
             state = self._runs.get(run_id)
             if state is None:
                 return
+
             for key, value in fields.items():
+                if not hasattr(state, key):
+                    raise AttributeError(f"Unknown RunState field: {key}")
+
                 setattr(state, key, value)
+
             state.updated_at = time.time()
 
-    async def bump_fast_progress(self, run_id: str, total: int) -> None:
+    async def record_fast_path_progress(
+        self,
+        run_id: str,
+        total: int,
+        result: Optional[Any],
+    ) -> None:
+        """Record one fast matcher terminal result.
+
+        Only confirmed/flagged records count as processed. Ambiguous/unresolved
+        records are handed to the agent stage and count when that stage finishes.
+        """
         async with self._lock:
             state = self._runs.get(run_id)
             if state is None:
                 return
-            state.fast_path_resolved_so_far += 1
-            state.total_records = total
+
+            state.total_records = max(state.total_records, int(total))
+
+            result_status = getattr(result, "status", None) if result is not None else None
+            if result_status not in ("confirmed", "flagged"):
+                return
+
+            state.records_processed += 1
+
+            if result_status == "confirmed":
+                state.fast_path_resolved_so_far += 1
+
             state.updated_at = time.time()
 
     async def bump_agent_progress(self, run_id: str) -> None:
+        """Record one terminal agent-stage result."""
         async with self._lock:
             state = self._runs.get(run_id)
             if state is None:
                 return
+
             state.agent_resolved_so_far += 1
+            state.records_processed += 1
             state.updated_at = time.time()
 
     async def append_exception(self, run_id: str, exc_record: Dict[str, Any]) -> None:
@@ -136,6 +158,7 @@ class RunStore:
             if state is None:
                 return
             state.exceptions.append(exc_record)
+            state.updated_at = time.time()
 
     async def append_dlq(self, run_id: str, dlq_record: Dict[str, Any]) -> None:
         async with self._lock:
@@ -143,15 +166,18 @@ class RunStore:
             if state is None:
                 return
             state.dead_letter_queue.append(dlq_record)
+            state.updated_at = time.time()
 
     async def find_latest_completed(self) -> Optional[RunState]:
         async with self._lock:
-            completed = [s for s in self._runs.values() if s.status == RunStatus.COMPLETED]
+            completed = [
+                state
+                for state in self._runs.values()
+                if state.status == RunStatus.COMPLETED
+            ]
             if not completed:
                 return None
-            return max(completed, key=lambda s: s.updated_at)
+            return max(completed, key=lambda state: state.updated_at)
 
 
-# Single process-wide store instance (mirrors how a single Redis connection
-# pool would be shared across requests).
 run_store = RunStore()

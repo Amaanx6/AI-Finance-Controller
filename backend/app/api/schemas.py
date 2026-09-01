@@ -34,6 +34,9 @@ class ScoreBlock(BaseModel):
 
 
 class RunResultsResponse(BaseModel):
+    # New runs persist this value. Optional preserves compatibility with older
+    # eval_run_*.json files created before run_id was added.
+    run_id: Optional[str] = None
     run_started_at: str
     timestamp: str
     provider_mode: str

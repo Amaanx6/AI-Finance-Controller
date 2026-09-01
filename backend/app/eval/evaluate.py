@@ -51,7 +51,7 @@ PATTERN_ORDER = [
 # Callback types used to wire this pipeline into the FastAPI job runner
 # (see backend/app/api/job.py). All are optional and default to no-ops so
 # `python -m backend.app.scripts.evaluate` behaves exactly as before.
-FastProgressCB = Callable[[int, int], None]
+FastProgressCB = Callable[[int, int, Optional[MatchResult]], None]
 AgentProgressCB = Callable[[Dict[str, Any]], None]
 ExceptionCB = Callable[[Dict[str, Any]], None]
 DLQCB = Callable[[Dict[str, Any]], None]
@@ -510,7 +510,7 @@ async def run_evaluation(
 
     def _fast_cb(completed: int, total: int, result: MatchResult) -> None:
         if fast_progress_cb:
-            fast_progress_cb(completed, total)
+            fast_progress_cb(completed, total, result)
         if result.status == "flagged" and exception_cb:
             exception_cb({
                 "record_id": result.bank_id,
@@ -727,6 +727,10 @@ async def run_evaluation(
     ]
 
     results_payload = {
+        # The caller creates the run identity. Persist it in the original
+        # durable file rather than retrospectively selecting "the newest"
+        # file, which can be wrong when evaluations overlap.
+        "run_id": run_id,
         "run_started_at": run_started_at.isoformat(),
         "timestamp": timestamp,
         "provider_mode": configured_provider,
