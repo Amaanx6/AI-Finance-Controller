@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic'
 
 const LiquidGlass = dynamic(() => import('liquid-glass-react'), { ssr: false })
 import { ArrowDown, ArrowUpRight, Check, ChevronRight, CircleAlert, FileSearch, Menu, Play, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { Brand } from '@/components/brand'
 
 const fade = { initial: { opacity: 0, y: 18 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, amount: 0.22 }, transition: { duration: 0.7, ease: 'easeOut' as const } }
 
@@ -19,7 +20,7 @@ function Nav() {
   const [open, setOpen] = useState(false)
   return <>
     <header className="nav">
-      <Link href="#top" className="brand" onClick={() => setOpen(false)}><span className="brand-mark">A</span><span>arbiter</span></Link>
+      <span onClick={() => setOpen(false)}><Brand href="#top" /></span>
       <nav className="nav-links"><Link href="#system">How it works</Link><Link href="#proof">Proof</Link><Link href="/runs">Open control room <ArrowUpRight size={14} /></Link></nav>
       <Link className="nav-cta" href="/runs">Run a reconciliation <ChevronRight size={15} /></Link>
       <button className="menu" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} onClick={() => setOpen(v => !v)}><Menu size={20}/></button>
@@ -60,6 +61,6 @@ function Metrics() { return <section id="proof" className="section proof"><motio
 
 function Dataset() { return <section className="section dataset"><motion.div {...fade} className="dataset-copy"><span className="eyebrow">THE ADVERSARIAL DATASET</span><h2>Built to expose<br/><em>confident mistakes.</em></h2><p>Clean transactions are easy. Arbiter’s test set is deliberately uncomfortable: composite settlements, near misses, decoys, and anomalies that punish a guess.</p><Link className="text-link" href="/runs">Explore the control room <ArrowUpRight size={15}/></Link></motion.div><motion.div {...fade} className="dataset-bars"><div className="bar-label"><span>clean 1:1</span><b>62%</b></div><div className="bar"><i style={{width:'62%'}}/></div><div className="bar-label"><span>many-to-one</span><b>18%</b></div><div className="bar"><i style={{width:'38%'}} className="mint-fill"/></div><div className="bar-label"><span>near misses + decoys</span><b>12%</b></div><div className="bar"><i style={{width:'26%'}} className="amber-fill"/></div><div className="bar-label"><span>anomalies</span><b>8%</b></div><div className="bar"><i style={{width:'18%'}} className="rose-fill"/></div></motion.div></section> }
 
-function Footer() { return <footer><div><Link href="#top" className="brand"><span className="brand-mark">A</span><span>arbiter</span></Link><p>Reconciliation for the records<br/>that do not reconcile themselves.</p></div><div className="footer-cta"><span className="eyebrow">READY TO INVESTIGATE?</span><Link href="/runs">Run a reconciliation <ArrowUpRight size={16}/></Link></div><span className="footer-meta">© 2026 Arbiter / built for honest books</span></footer> }
+function Footer() { return <footer><div><Brand href="#top" /><p>Reconciliation for the records<br/>that do not reconcile themselves.</p></div><div className="footer-cta"><span className="eyebrow">READY TO INVESTIGATE?</span><Link href="/runs">Run a reconciliation <ArrowUpRight size={16}/></Link></div><span className="footer-meta">© 2026 Arbiter / built for honest books</span></footer> }
 
 export default function Page() { return <main><Nav/><Hero/><Problem/><Pipeline/><Centerpiece/><Metrics/><Dataset/><Footer/></main> }

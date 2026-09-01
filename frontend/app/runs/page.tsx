@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { useAllResults, useLatestResults, useRunResults } from '@/lib/queries'
 import { formatMetric, outcomes } from '@/lib/view-models'
 import type { RunResultsSummary } from '@/lib/api-types'
+import { Brand } from '@/components/brand'
 
 const ResultsCharts = dynamic(() => import('@/components/results/BklitCharts'), { ssr: false, loading: () => <div className="chart-skeleton" aria-label="Loading dashboard charts" /> })
 
@@ -53,7 +54,7 @@ export default function RunsPage() {
   const outcomeItems = useMemo(() => outcomes(breakdown).filter((item) => item.count > 0), [breakdown])
 
   return <main className="runs-page dashboard-page">
-    <header className="runs-nav"><Link href="/" className="brand"><span className="brand-mark">A</span> arbiter</Link><span className="dashboard-nav-title">Reconciliation workspace</span><Link href="/" className="back"><ArrowLeft size={15} /> return to story</Link></header>
+    <header className="runs-nav"><Brand /><span className="dashboard-nav-title">Reconciliation workspace</span><Link href="/" className="back"><ArrowLeft size={15} /> return to story</Link></header>
     <section className="dashboard-shell">
       <aside className="dashboard-sidebar glass">
         <div className="sidebar-heading"><div><span className="eyebrow">WORKSPACE</span><h2>Runs</h2></div><button className="icon-btn" type="button" aria-label="Refresh runs" onClick={() => void history.refetch()}><RefreshCw size={15} /></button></div>
