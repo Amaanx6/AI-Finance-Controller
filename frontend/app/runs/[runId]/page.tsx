@@ -1151,16 +1151,16 @@ function Results({
           </span>
 
           <h2>
-            Results are ready to inspect.
+            {exceptionCount > 0
+              ? `${exceptionCount} records need attention.`
+              : 'Every record resolved cleanly.'}
           </h2>
 
           <p>
-            {runId}
-            {' · '}
-            {result?.timestamp ||
-              result?.run_started_at ||
-              'Timestamp unavailable'}
+            {fastConfirmed + agentConfirmed} of {summary.total ?? '—'} records
+            resolved · {formatMetric(summary.overall)} overall match rate.
           </p>
+          <small className="result-technical-meta">{runId} · {result?.timestamp || result?.run_started_at || 'Timestamp unavailable'}</small>
         </div>
 
         <ShieldCheck

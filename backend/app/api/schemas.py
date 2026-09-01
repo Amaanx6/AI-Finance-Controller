@@ -51,6 +51,17 @@ class RunResultsResponse(BaseModel):
     caveats: List[str] = Field(default_factory=list)
 
 
+class RunResultsSummary(BaseModel):
+    """Compact durable run record used by the dashboard archive."""
+    run_id: Optional[str] = None
+    run_started_at: Optional[str] = None
+    timestamp: Optional[str] = None
+    provider_mode: Optional[str] = None
+    total_records: Optional[int] = None
+    overall_match_rate: Optional[float] = None
+    breakdown: Dict[str, int] = Field(default_factory=dict)
+
+
 class ReasoningTraceResponse(BaseModel):
     record_id: str
     handled_by_key: Optional[str] = None
