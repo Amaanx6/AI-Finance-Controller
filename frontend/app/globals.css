@@ -983,7 +983,14 @@ main { position: relative; overflow: clip; background: radial-gradient(ellipse a
 .run-live-mode .run-content > h1 { font-size: clamp(44px, 6vw, 76px); margin-top: 16px; margin-bottom: 12px; }
 .run-live-mode .runs-lede { margin-bottom: 0; }
 .run-live-mode .live-liquid { width: 100%; margin-top: 28px; }
-.run-live-mode .live-panel { min-height: 0; }
+.run-live-mode .live-panel { min-height: 0; display: flex; flex-direction: column; }
+.run-live-mode .live-topline { order: 0; }
+.run-live-mode .live-hero-row { order: 1; }
+.run-live-mode .progress { order: 2; }
+.run-live-mode .run-stage-map { order: 3; }
+.run-live-mode .live-stats { order: 4; }
+.run-live-mode .current-state-card { order: 5; }
+.run-live-mode .activity-feed { order: 6; }
 .brand-mark { flex: 0 0 auto; display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid rgba(185,233,208,.7); border-radius: 10px; color: var(--mint); background: linear-gradient(145deg, rgba(185,233,208,.12), rgba(255,255,255,.025)); box-shadow: inset 0 1px rgba(255,255,255,.2), 0 0 22px rgba(185,233,208,.08); }
 .brand-mark svg { display: block; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
@@ -1377,5 +1384,96 @@ main { position: relative; overflow: clip; background: radial-gradient(ellipse a
 
   .chart-skeleton {
     animation: none;
+  }
+}
+
+/* ---------- Live run viewport fix ---------- */
+
+.run-detail.run-live-mode {
+  min-height: 100svh;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.run-detail.run-live-mode::before {
+  position: fixed;
+}
+
+.run-detail.run-live-mode .runs-nav {
+  width: min(100% - 32px, 1240px);
+  margin-inline: auto;
+  padding-inline: 0;
+}
+
+.run-detail.run-live-mode .run-content {
+  width: min(100% - 32px, 920px);
+  max-width: 920px;
+  margin-inline: auto;
+  padding: clamp(18px, 3vh, 34px) 0 72px;
+}
+
+.run-detail.run-live-mode .run-content > h1 {
+  max-width: 760px;
+  margin: 12px 0 10px;
+  font-size: clamp(42px, 5vw, 64px);
+  line-height: 1;
+}
+
+.run-detail.run-live-mode .runs-lede {
+  max-width: 560px;
+  margin: 0;
+}
+
+.run-detail.run-live-mode .live-liquid {
+  display: block;
+  width: 100%;
+  max-width: 920px;
+  margin: 22px auto 0;
+  overflow: hidden;
+  border-radius: 24px;
+}
+
+.run-detail.run-live-mode .live-panel {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: clamp(20px, 3vw, 28px);
+  transform: none;
+}
+
+.run-detail.run-live-mode .live-hero-row {
+  margin-top: 18px;
+}
+
+.run-detail.run-live-mode .progress-number {
+  font-size: clamp(76px, 8vw, 108px);
+}
+
+@media (max-width: 760px) {
+  .run-detail.run-live-mode .runs-nav,
+  .run-detail.run-live-mode .run-content {
+    width: min(100% - 24px, 920px);
+  }
+
+  .run-detail.run-live-mode .run-content {
+    padding-top: 18px;
+  }
+
+  .run-detail.run-live-mode .run-content > h1 {
+    font-size: 44px;
+  }
+
+  .run-detail.run-live-mode .live-liquid {
+    margin-top: 18px;
+    border-radius: 18px;
+  }
+
+  .run-detail.run-live-mode .live-hero-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .run-detail.run-live-mode .run-stage-map ol {
+    grid-template-columns: 1fr;
   }
 }

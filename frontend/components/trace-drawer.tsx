@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Clipboard, FileSearch, LoaderCircle, RefreshCw, X } from 'lucide-react'
 import { usePrefetchTrace, useReasoningTrace } from '@/lib/queries'
@@ -61,8 +61,8 @@ export function TraceDrawer({ recordId = '', open: controlledOpen, onOpenChange 
   const closeRef = useRef<HTMLButtonElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const reduced = useReducedMotion()
-  const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next) }
-  useEffect(() => { if (!open) return; const previous = document.activeElement as HTMLElement | null; const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); if (event.key !== 'Tab') return; const nodes = Array.from(document.querySelectorAll<HTMLElement>('.trace-drawer button, .trace-drawer input, .trace-drawer summary')).filter((node) => !node.hasAttribute('disabled')); const boundary = event.shiftKey ? nodes[0] : nodes.at(-1); if (nodes.length && document.activeElement === boundary) { event.preventDefault(); (event.shiftKey ? nodes.at(-1) : nodes[0])?.focus() } }; requestAnimationFrame(() => closeRef.current?.focus()); document.addEventListener('keydown', onKey); return () => { document.removeEventListener('keydown', onKey); requestAnimationFrame(() => triggerRef.current?.focus() || previous?.focus()) } }, [open])
+  const setOpen = useCallback((next: boolean) => { setLocalOpen(next); onOpenChange?.(next) }, [onOpenChange])
+  useEffect(() => { if (!open) return; const previous = document.activeElement as HTMLElement | null; const trigger = triggerRef.current; const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); if (event.key !== 'Tab') return; const nodes = Array.from(document.querySelectorAll<HTMLElement>('.trace-drawer button, .trace-drawer input, .trace-drawer summary')).filter((node) => !node.hasAttribute('disabled')); const boundary = event.shiftKey ? nodes[0] : nodes.at(-1); if (nodes.length && document.activeElement === boundary) { event.preventDefault(); (event.shiftKey ? nodes.at(-1) : nodes[0])?.focus() } }; requestAnimationFrame(() => closeRef.current?.focus()); document.addEventListener('keydown', onKey); return () => { document.removeEventListener('keydown', onKey); requestAnimationFrame(() => trigger?.focus() || previous?.focus()) } }, [open, setOpen])
   const data = asRecord(trace.data)
   const decision = asRecord(data?.final_decision) ?? {}
   const decisionStatus = asString(data?.final_status ?? decision.status) ?? 'Not returned'
