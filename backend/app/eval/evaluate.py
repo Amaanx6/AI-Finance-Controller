@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
 import io
 import json
 import os
@@ -39,6 +40,17 @@ GROUND_TRUTH_CSV = Path(
 
 RESULTS_DIR = BASE_DIR / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return "unavailable"
+    return digest.hexdigest()
 
 PATTERN_ORDER = [
     "clean_1to1_match",
@@ -726,6 +738,17 @@ async def run_evaluation(
         r for r in (agent_results + baseline_results) if r.get("final_status") == "dlq"
     ]
 
+    def record_amount(record_id: Any) -> float:
+        try:
+            return float(bank_records_numeric.get(str(record_id), {}).get("amount", 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    total_value = sum(record_amount(record_id) for record_id in bank_records_numeric)
+    automatic_value = sum(record_amount(item.bank_id) for item in fast_confirmed)
+    agent_value = sum(record_amount(item.get("record_id")) for item in agent_confirmed)
+    exception_value = max(0.0, total_value - automatic_value - agent_value)
+
     results_payload = {
         # The caller creates the run identity. Persist it in the original
         # durable file rather than retrospectively selecting "the newest"
@@ -734,6 +757,23 @@ async def run_evaluation(
         "run_started_at": run_started_at.isoformat(),
         "timestamp": timestamp,
         "provider_mode": configured_provider,
+        "reproducibility": {
+            "dataset_version": os.environ.get("DATASET_VERSION", "samples-v1"),
+            "input_sha256": {
+                "bank_statement": _file_sha256(BANK_CSV),
+                "internal_ledger": _file_sha256(LEDGER_CSV),
+                "gateway_export": _file_sha256(GATEWAY_CSV),
+            },
+            "provider": configured_provider,
+            "model": os.environ.get("MODEL") or os.environ.get("LOCAL_MODEL") or "configured provider default",
+            "prompt_version": os.environ.get("PROMPT_VERSION", "default-prompts"),
+            "matching_policy": {
+                "amount_tolerance": "deterministic matcher policy",
+                "date_window": "deterministic matcher policy",
+                "agent_max_turns": getattr(config, "MAX_TURNS", None),
+            },
+            "code_version": os.environ.get("GIT_COMMIT", "local-working-tree"),
+        },
         "total_records": total_records,
         "overall_match_rate": overall_match_rate,
         "breakdown": {
@@ -741,6 +781,13 @@ async def run_evaluation(
             "fast_path_flagged": len(fast_flagged),
             "agent_confirmed": len(agent_confirmed),
             "exception": len(agent_exception),
+        },
+        "financial_impact": {
+            "currency": os.environ.get("RECONCILIATION_CURRENCY", "INR"),
+            "total_value": round(total_value, 2),
+            "automatically_reconciled_value": round(automatic_value, 2),
+            "agent_reconciled_value": round(agent_value, 2),
+            "value_requiring_review": round(exception_value, 2),
         },
         "full_pipeline_scores": full_scores,
         "baseline_scores": baseline_scores,
