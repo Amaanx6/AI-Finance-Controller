@@ -65,11 +65,6 @@ const ResultsCharts = dynamic(
   },
 )
 
-const LiquidGlass = dynamic(
-  () => import('liquid-glass-react'),
-  { ssr: false },
-)
-
 type RunPhase =
   | 'loading'
   | 'running'
@@ -165,6 +160,7 @@ export default function RunPage() {
     return 'unknown'
   }, [
     hasPersistedResult,
+    resultQuery.error,
     resultQuery.isPending,
     status,
     statusNotFound,
@@ -688,16 +684,7 @@ function Live({
   )
 
   return (
-    <LiquidGlass
-      className="live-liquid"
-      displacementScale={42}
-      blurAmount={0.1}
-      saturation={118}
-      aberrationIntensity={0.7}
-      elasticity={0.16}
-      cornerRadius={28}
-      mode="standard"
-    >
+    <div className="live-liquid">
     <motion.div
       className="live-panel glass"
       initial={
@@ -733,22 +720,6 @@ function Live({
           {runId}
         </span>
       </div>
-
-      <section className="run-stage-map" aria-label="Reconciliation stages">
-        <div className="run-stage-intro">
-          <span className="micro-label">INVESTIGATION MAP</span>
-          <p>Every record follows a visible path from source data to evidence.</p>
-        </div>
-        <ol>
-          {stages.map((stage, index) => (
-            <li className={`run-stage ${stage.state}`} key={stage.label}>
-              <span className="stage-index">{String(index + 1).padStart(2, '0')}</span>
-              <span className="stage-copy"><b>{stage.label}</b><small>{stage.detail}</small></span>
-              <span className="stage-state">{stage.state === 'done' ? 'Complete' : stage.state === 'active' ? 'Active' : 'Waiting'}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
 
       <div className="live-hero-row">
         <div>
@@ -825,6 +796,22 @@ function Live({
           }
         />
       </div>
+
+      <section className="run-stage-map" aria-label="Reconciliation stages">
+        <div className="run-stage-intro">
+          <span className="micro-label">INVESTIGATION MAP</span>
+          <p>Every record follows a visible path from source data to evidence.</p>
+        </div>
+        <ol>
+          {stages.map((stage, index) => (
+            <li className={`run-stage ${stage.state}`} key={stage.label}>
+              <span className="stage-index">{String(index + 1).padStart(2, '0')}</span>
+              <span className="stage-copy"><b>{stage.label}</b><small>{stage.detail}</small></span>
+              <span className="stage-state">{stage.state === 'done' ? 'Complete' : stage.state === 'active' ? 'Active' : 'Waiting'}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <div className="live-stats">
         <Stat
@@ -952,7 +939,7 @@ function Live({
         </p>
       )}
     </motion.div>
-    </LiquidGlass>
+    </div>
   )
 }
 
