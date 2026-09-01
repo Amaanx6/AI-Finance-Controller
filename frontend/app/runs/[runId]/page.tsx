@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 
 import dynamic from 'next/dynamic'
+import { Brand } from '@/components/brand'
 
 import {
   isNotFoundError,
@@ -188,7 +189,7 @@ export default function RunPage() {
   }
 
   return (
-    <main className="run-detail">
+    <main className={`run-detail ${phase === 'completed' ? 'run-results-mode' : 'run-live-mode'}`}>
       <header className="runs-nav">
         <Link
           href="/runs"
@@ -198,10 +199,7 @@ export default function RunPage() {
           all runs
         </Link>
 
-        <span className="brand">
-          <span className="brand-mark">A</span>
-          arbiter
-        </span>
+        <Brand />
 
         <span className="run-id">
           RUN {runId}

@@ -939,6 +939,17 @@ main { position: relative; overflow: clip; background: radial-gradient(ellipse a
 .run-detail .trace-drawer { font-size:15px; }.run-detail .trace-drawer h2 { font-size:36px; }.run-detail .trace-drawer label, .run-detail .trace-hint { font-size:13px; }
 @media (max-width: 700px) { .run-detail .run-content > h1 { font-size:clamp(42px,12vw,62px); }.run-detail .result-banner { padding:22px; }.runs-page .runs-shell, .run-detail .run-content { padding-inline:18px; }.run-detail .kpi strong { font-size:34px; } }
 
+/* Keep an active run in the first viewport: live status is the primary task. */
+.run-live-mode .run-content { padding-top: clamp(30px, 5vh, 64px); }
+.run-live-mode .run-content > h1 { font-size: clamp(44px, 6vw, 76px); margin-top: 16px; margin-bottom: 12px; }
+.run-live-mode .runs-lede { margin-bottom: 0; }
+.run-live-mode .live-liquid { width: 100%; margin-top: 28px; }
+.run-live-mode .live-panel { min-height: 0; }
+.brand-mark { flex: 0 0 auto; display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid rgba(185,233,208,.7); border-radius: 10px; color: var(--mint); background: linear-gradient(145deg, rgba(185,233,208,.12), rgba(255,255,255,.025)); box-shadow: inset 0 1px rgba(255,255,255,.2), 0 0 22px rgba(185,233,208,.08); }
+.brand-mark svg { display: block; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 700px) { .run-live-mode .run-content { padding-top: 24px; }.run-live-mode .run-content > h1 { font-size: clamp(40px, 11vw, 58px); }.run-live-mode .live-liquid { margin-top: 22px; border-radius: 20px; } }
+
 .exception-card {
   min-width: 0;
 }
