@@ -668,13 +668,23 @@ a:focus-visible {
 
 .hero,
 .section {
-  width: min(100%, 1440px);
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
 }
 
 .hero {
-  padding-inline: clamp(18px, 4vw, 56px);
+  padding-inline: max(18px, calc((100vw - 1440px) / 2));
 }
+
+/* Full-bleed atmospheric canvas; readable content remains constrained by
+ * responsive padding rather than creating black side gutters. */
+main { position: relative; overflow: clip; background: radial-gradient(ellipse at 50% 8%, rgba(185,233,208,.08), transparent 38%), #08090b; }
+.section { padding-inline: max(28px, calc((100vw - 1240px) / 2)); }
+/* Capsule navigation keeps the brand and primary action legible over the
+ * atmospheric hero while leaving the page itself full bleed. */
+.nav { position:fixed; top:18px; left:50%; z-index:50; width:min(calc(100% - 32px), 780px); height:58px; transform:translateX(-50%); padding:0 10px 0 16px; border:1px solid rgba(255,255,255,.14); border-radius:999px; background:rgba(13,17,16,.72); box-shadow:0 18px 50px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.14); backdrop-filter:blur(22px); }
+.nav .nav-cta { background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.16); }
+.hero { padding-top:130px; }
 
 .hero-copy {
   width: min(100%, 880px);
@@ -871,7 +881,40 @@ a:focus-visible {
 .evidence-array { display: grid; gap: 8px; margin: 0; padding-left: 22px; }
 .evidence-array li { min-width: 0; padding: 8px 0; overflow-wrap: anywhere; }
 .evidence-primitive { overflow-wrap: anywhere; }
+.trace-timeline { display:grid; gap:12px; }.trace-attempt { padding:14px; border:1px solid rgba(255,255,255,.1); border-radius:14px; background:rgba(255,255,255,.035); }.trace-attempt-head { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:10px; letter-spacing:.08em; color:var(--muted); }.trace-attempt-head b { color:var(--foreground); font-size:11px; letter-spacing:0; text-transform:none; }.trace-attempt p { margin:10px 0; color:var(--muted); font-size:12px; line-height:1.55; }.trace-chip-row { display:flex; flex-wrap:wrap; gap:6px; }.trace-chip-row span { border:1px solid rgba(185,233,208,.25); border-radius:999px; padding:4px 7px; color:var(--mint); font:10px ui-monospace,SFMono-Regular,Consolas,monospace; }.trace-attempt details { margin-top:10px; border-top:1px solid rgba(255,255,255,.08); padding-top:9px; }.trace-attempt summary { cursor:pointer; color:var(--muted); font-size:11px; }
 @media (max-width: 640px) { .evidence-object > div { grid-template-columns: 1fr; gap: 4px; } }
+
+/* ---------- Investigation workspace ---------- */
+.live-liquid { display:block; width:min(100%, 920px); margin:52px auto 0; overflow:hidden; border-radius:28px; box-shadow:0 28px 100px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.3); }
+.live-liquid .live-panel { margin:0; width:100%; max-width:none; background:linear-gradient(135deg,rgba(29,37,34,.72),rgba(10,13,13,.78)); backdrop-filter:blur(24px); }
+.run-stage-map { margin-top:25px; padding:18px; border:1px solid rgba(255,255,255,.1); border-radius:20px; background:linear-gradient(125deg,rgba(185,233,208,.075),rgba(255,255,255,.025)); }
+.run-stage-intro { display:flex; align-items:end; justify-content:space-between; gap:18px; margin-bottom:14px; }
+.run-stage-intro p { margin:0; color:var(--muted); font-size:11px; max-width:300px; text-align:right; }
+.run-stage-map ol { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); list-style:none; padding:0; margin:0; }
+.run-stage { position:relative; min-width:0; display:grid; gap:7px; padding:14px 14px 12px; border-top:1px solid rgba(255,255,255,.1); }
+.run-stage:not(:last-child)::after { content:""; position:absolute; height:1px; right:-1px; left:58%; top:0; background:var(--line); }
+.run-stage.done:not(:last-child)::after { background:var(--mint); }
+.stage-index { color:#78807a; font:10px ui-monospace,SFMono-Regular,Consolas,monospace; }
+.stage-copy { min-width:0; display:grid; gap:4px; }
+.stage-copy b { font-size:12px; font-weight:500; }
+.stage-copy small { color:var(--muted); font-size:10px; line-height:1.4; overflow-wrap:anywhere; }
+.stage-state { color:#808682; font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+.run-stage.done .stage-state { color:var(--mint); }.run-stage.active { background:rgba(232,186,112,.055); }.run-stage.active .stage-state { color:var(--amber); }.run-stage.waiting { opacity:.55; }
+
+/* Operational pages use calmer, compact typography than editorial landing. */
+.runs-shell { max-width:1120px; padding-top:78px; }.runs-shell > h1 { font-size:clamp(42px,5.5vw,70px); max-width:720px; }.run-panel { margin-top:46px; max-width:none; background:linear-gradient(135deg,rgba(31,41,37,.72),rgba(10,13,13,.78)); }.latest { margin-top:76px; }
+.latest-result { background:linear-gradient(135deg,rgba(29,39,35,.75),rgba(11,14,14,.8)); }
+.run-journey, .results-journey { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; margin:20px 0 24px; border:1px solid rgba(255,255,255,.1); border-radius:18px; overflow:hidden; background:rgba(255,255,255,.025); }
+.run-journey > div, .results-journey > div { min-width:0; display:grid; gap:4px; padding:15px; border-right:1px solid rgba(255,255,255,.08); }
+.run-journey > div:last-child, .results-journey > div:last-child { border-right:0; }
+.run-journey span, .results-journey span { color:#717a73; font:10px ui-monospace,SFMono-Regular,Consolas,monospace; }
+.run-journey b, .results-journey b { font-size:12px; font-weight:500; }.run-journey small, .results-journey small { color:var(--muted); font-size:10px; overflow-wrap:anywhere; }
+.results-journey { margin:22px 0 54px; }.results-journey > div:nth-child(2) b { color:var(--mint); }.results-journey > div:nth-child(3) b { color:var(--amber); }.results-journey > div:nth-child(4) b { color:var(--rose); }
+.section-title { margin:14px 0 8px; font-size:clamp(26px,3vw,38px); }.exception-queue { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; border-top:0; padding-top:0; }.exception-queue .exception-card { min-width:0; margin:0; padding:18px; border:1px solid rgba(255,255,255,.1); border-radius:16px; background:linear-gradient(135deg,rgba(255,255,255,.06),rgba(255,255,255,.025)); }.exception-card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }.exception-card-head .exception-id { color:var(--foreground); font:12px ui-monospace,SFMono-Regular,Consolas,monospace; }.exception-status { color:var(--amber); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }.exception-queue .exception-card > p { margin:12px 0 16px; color:var(--muted); font-size:12px; line-height:1.5; }.exception-queue .exception-card > p b { font-weight:400; }.case-legend { display:grid; gap:12px; margin-top:22px; color:var(--muted); font-size:11px; }.legend-dot { display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--mint); }.legend-dot.amber { background:var(--amber); }.legend-dot.rose { background:var(--rose); }
+
+@media (max-width: 800px) { .run-stage-map ol { grid-template-columns:1fr 1fr; }.run-stage:nth-child(2)::after { display:none; }.run-stage { min-height:112px; }.live-liquid { margin-top:36px; border-radius:22px; }.run-stage-intro { align-items:start; flex-direction:column; gap:7px; }.run-stage-intro p { text-align:left; }.runs-shell { padding-top:56px; }.run-journey, .results-journey { grid-template-columns:1fr 1fr; }.run-journey > div:nth-child(2), .results-journey > div:nth-child(2) { border-right:0; }.exception-queue { grid-template-columns:1fr; } }
+@media (max-width: 900px) { .nav { top:12px; width:calc(100% - 24px); } .hero { padding-top:106px; } }
+@media (max-width: 480px) { .run-stage-map { padding:12px; }.run-stage-map ol { grid-template-columns:1fr; }.run-stage { min-height:auto; grid-template-columns:30px minmax(0,1fr); align-items:start; }.stage-state { grid-column:2; }.run-stage:not(:last-child)::after { left:29px; top:auto; bottom:-1px; width:1px; height:14px; }.live-panel { padding:18px; }.live-hero-row { gap:18px; }.progress-number { font-size:72px; }.latest { margin-top:52px; } }
 
 .exception-card {
   min-width: 0;

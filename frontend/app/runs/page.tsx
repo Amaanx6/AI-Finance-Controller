@@ -86,14 +86,14 @@ export default function RunsPage() {
         <div className="eyebrow">CONTROL ROOM / RUNS</div>
 
         <h1>
-          See what the books
+          Your reconciliation
           <br />
-          <em>are really saying.</em>
+          <em>workspace.</em>
         </h1>
 
         <p className="runs-lede">
-          Start a reconciliation to watch Arbiter separate clean matches
-          from the records that require judgment.
+          Start a run, follow every stage of the investigation, and return to
+          the evidence whenever a decision needs explaining.
         </p>
 
         <div className="run-panel glass">
@@ -108,6 +108,13 @@ export default function RunsPage() {
           <div className="run-meta">
             <span>source / bank + ledger + gateway</span>
             <span>mode / fast path + agent path</span>
+          </div>
+
+          <div className="run-journey" aria-label="Reconciliation journey preview">
+            <div><span>01</span><b>Load</b><small>source records</small></div>
+            <div><span>02</span><b>Match</b><small>deterministic rules</small></div>
+            <div><span>03</span><b>Review</b><small>ambiguous evidence</small></div>
+            <div><span>04</span><b>Explain</b><small>results and traces</small></div>
           </div>
 
           <button

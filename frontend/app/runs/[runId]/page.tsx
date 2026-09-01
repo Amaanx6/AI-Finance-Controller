@@ -64,6 +64,11 @@ const ResultsCharts = dynamic(
   },
 )
 
+const LiquidGlass = dynamic(
+  () => import('liquid-glass-react'),
+  { ssr: false },
+)
+
 type RunPhase =
   | 'loading'
   | 'running'
@@ -434,7 +439,7 @@ function Live({
 
     const timer = window.setTimeout(
       () => setHasRevealedFirstSnapshot(true),
-      700,
+      1800,
     )
 
     return () => window.clearTimeout(timer)
@@ -445,6 +450,35 @@ function Live({
       0,
       total - processed,
     )
+
+  const agentQueue = Math.max(0, total - fast)
+
+  const stages = [
+    {
+      label: 'Dataset loaded',
+      detail: total > 0 ? `${total} bank records ready` : 'Reading source records',
+      state: total > 0 ? 'done' : 'active',
+    },
+    {
+      label: 'Fast matching',
+      detail: hasRevealedFirstSnapshot
+        ? `${fast} confirmed automatically · ${agentQueue} sent to review`
+        : 'Separating deterministic matches',
+      state: hasRevealedFirstSnapshot ? 'done' : 'active',
+    },
+    {
+      label: 'Evidence review',
+      detail: agentQueue > 0
+        ? `${agent} of ${agentQueue} ambiguous records resolved`
+        : 'No ambiguous records require review',
+      state: agentQueue === 0 || agent >= agentQueue ? 'done' : 'active',
+    },
+    {
+      label: 'Results',
+      detail: 'Evidence dashboard prepared when review completes',
+      state: 'waiting',
+    },
+  ]
 
   /*
    * Client-observed elapsed time.
@@ -656,8 +690,18 @@ function Live({
   )
 
   return (
+    <LiquidGlass
+      className="live-liquid"
+      displacementScale={42}
+      blurAmount={0.1}
+      saturation={118}
+      aberrationIntensity={0.7}
+      elasticity={0.16}
+      cornerRadius={28}
+      mode="standard"
+    >
     <motion.div
-      className="live-panel glass liquid-focal"
+      className="live-panel glass"
       initial={
         reduced
           ? false
@@ -691,6 +735,22 @@ function Live({
           {runId}
         </span>
       </div>
+
+      <section className="run-stage-map" aria-label="Reconciliation stages">
+        <div className="run-stage-intro">
+          <span className="micro-label">INVESTIGATION MAP</span>
+          <p>Every record follows a visible path from source data to evidence.</p>
+        </div>
+        <ol>
+          {stages.map((stage, index) => (
+            <li className={`run-stage ${stage.state}`} key={stage.label}>
+              <span className="stage-index">{String(index + 1).padStart(2, '0')}</span>
+              <span className="stage-copy"><b>{stage.label}</b><small>{stage.detail}</small></span>
+              <span className="stage-state">{stage.state === 'done' ? 'Complete' : stage.state === 'active' ? 'Active' : 'Waiting'}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <div className="live-hero-row">
         <div>
@@ -894,6 +954,7 @@ function Live({
         </p>
       )}
     </motion.div>
+    </LiquidGlass>
   )
 }
 
@@ -1108,58 +1169,11 @@ function Results({
         />
       </motion.div>
 
-      <section className="result-section highlighted">
-        <span className="eyebrow">
-          HIGHLIGHTED CASES
-        </span>
-
-        <h2>
-          Where the Verifier mattered.
-        </h2>
-
-        <p>
-          {recordIds.length > 0
-            ? `${recordIds.length} backend-provided record${
-                recordIds.length ===
-                1
-                  ? ''
-                  : 's'
-              } need inspection.`
-            : 'No flagged records are waiting for investigation.'}
-        </p>
-
-        <div className="trace-list">
-          {recordIds
-            .slice(0, 6)
-            .map((id) => (
-              <button
-                className="trace-row trace-row-button"
-                key={id}
-                type="button"
-                onClick={() =>
-                  openTrace(id)
-                }
-              >
-                <CircleAlert
-                  size={16}
-                />
-
-                <span>
-                  <b>{id}</b>
-
-                  <small>
-                    Inspect proposal,
-                    evidence and final
-                    decision.
-                  </small>
-                </span>
-
-                <ArrowUpRight
-                  size={15}
-                />
-              </button>
-            ))}
-        </div>
+      <section className="results-journey" aria-label="Completed reconciliation journey">
+        <div><span>01</span><b>Loaded</b><small>{summary.total ?? '—'} records</small></div>
+        <div><span>02</span><b>Matched</b><small>{fastConfirmed} automatically</small></div>
+        <div><span>03</span><b>Reviewed</b><small>{agentConfirmed} by agent path</small></div>
+        <div><span>04</span><b>Explained</b><small>{exceptionCount} exceptions surfaced</small></div>
       </section>
 
       <section className="result-section">
@@ -1233,9 +1247,9 @@ function Results({
 
           <section className="result-grid">
             <section className="result-section">
-              <span className="eyebrow">
-                EXCEPTIONS / DEAD LETTER QUEUE
-              </span>
+              <span className="eyebrow">ATTENTION QUEUE / EXCEPTIONS</span>
+              <h2 className="section-title">Cases that need a human-readable explanation.</h2>
+              <p className="muted">These records were not silently forced into a match. Open a case to see the proposal, challenge, evidence, and final decision.</p>
 
               {exceptions.isPending ? (
                 <div className="chart-skeleton" />
@@ -1247,7 +1261,7 @@ function Results({
                   {exceptions.error.message}
                 </p>
               ) : exceptionItems.length ? (
-                <div className="evidence-details">
+                <div className="evidence-details exception-queue">
                   {exceptionItems
                     .slice(0, 8)
                     .map((item) => (
@@ -1255,18 +1269,16 @@ function Results({
                         className="exception-card"
                         key={item.id}
                       >
-                        <div>
+                          <div className="exception-card-head">
                           <span className="exception-id">
                             {item.id}
                           </span>
 
-                          <strong>
-                            {item.stage}
-                          </strong>
+                            <span className="exception-status">Needs review</span>
                         </div>
 
                         <p>
-                          {item.reason}
+                          <b>{item.reason}</b>
                         </p>
 
                         <button
@@ -1295,44 +1307,9 @@ function Results({
             </section>
 
             <section className="result-section">
-              <span className="eyebrow">
-                REASONING TRACES
-              </span>
-
-              <p className="muted">
-                Select a backend-provided
-                exception to inspect its
-                evidence trail.
-              </p>
-
-              <div className="trace-list">
-                {recordIds.map(
-                  (id) => (
-                    <button
-                      className="trace-row trace-row-button"
-                      key={id}
-                      type="button"
-                      onClick={() =>
-                        openTrace(
-                          id,
-                        )
-                      }
-                    >
-                      <FileSearch
-                        size={15}
-                      />
-
-                      <span>
-                        {id}
-                      </span>
-
-                      <ArrowUpRight
-                        size={14}
-                      />
-                    </button>
-                  ),
-                )}
-              </div>
+              <span className="eyebrow">HOW TO READ A CASE</span>
+              <p className="muted">Each case opens the backend trace as a guided evidence review. Start with the decision, then expand the timeline only when you need the underlying proposal details.</p>
+              <div className="case-legend"><span><i className="legend-dot mint" />confirmed evidence</span><span><i className="legend-dot amber" />requires review</span><span><i className="legend-dot rose" />exception outcome</span></div>
             </section>
           </section>
         </>
