@@ -43,12 +43,14 @@ class RunResultsResponse(BaseModel):
     total_records: int
     overall_match_rate: Optional[float] = None
     breakdown: Dict[str, int]
+    financial_impact: Dict[str, Any] = Field(default_factory=dict)
     full_pipeline_scores: Dict[str, Any]
     baseline_scores: Dict[str, Any]
     performance: Dict[str, Any]
     ground_truth_orphan_rows_excluded: int
     dead_letter_queue: List[Dict[str, Any]] = Field(default_factory=list)
     caveats: List[str] = Field(default_factory=list)
+    reproducibility: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RunResultsSummary(BaseModel):
