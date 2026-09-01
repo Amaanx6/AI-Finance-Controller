@@ -34,6 +34,8 @@ class ScoreBlock(BaseModel):
 
 
 class RunResultsResponse(BaseModel):
+    # Backwards-compatible: older persisted files may not contain run_id.
+    run_id: Optional[str] = None
     run_started_at: str
     timestamp: str
     provider_mode: str
