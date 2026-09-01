@@ -1,133 +1,1390 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+
 import Link from 'next/link'
-import { ArrowLeft, ArrowUpRight, CircleAlert, FileSearch, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useRunExceptions, useRunResults, useRunStatus, normalizeStatus } from '@/lib/queries'
-import { asNumber, asRecord, extractRecordIds } from '@/lib/api-types'
-import { evidenceRows, exceptionSummary, formatDelta, formatMetric, labelStatus, outcomes, resultSummary } from '@/lib/view-models'
+
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+} from 'motion/react'
+
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Check,
+  CircleAlert,
+  FileSearch,
+  RefreshCw,
+  ShieldCheck,
+} from 'lucide-react'
+
+import dynamic from 'next/dynamic'
+
+import {
+  isNotFoundError,
+  normalizeStatus,
+  useRunExceptions,
+  useRunResults,
+  useRunStatus,
+} from '@/lib/queries'
+
+import {
+  asNumber,
+  extractRecordIds,
+} from '@/lib/api-types'
+
+import {
+  exceptionSummary,
+  formatMetric,
+  labelStatus,
+  resultSummary,
+} from '@/lib/view-models'
+
 import { TraceDrawer } from '@/components/trace-drawer'
+
+const ResultsCharts = dynamic(
+  () => import('@/components/results/BklitCharts'),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="chart-skeleton"
+        aria-label="Loading reconciliation charts"
+      />
+    ),
+  },
+)
+
+type RunPhase =
+  | 'loading'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'not-found'
+  | 'unknown'
+
+type Activity = {
+  id: string
+  text: string
+  kind: 'progress' | 'fast' | 'agent' | 'status'
+}
+
+type Snapshot = {
+  processed: number
+  fast: number
+  agent: number
+  status: string
+}
 
 export default function RunPage() {
   const { runId = '' } = useParams<{ runId: string }>()
+
+  /*
+   * BOTH queries live here.
+   *
+   * This is the critical architectural fix.
+   */
   const statusQuery = useRunStatus(runId)
-  const status = normalizeStatus(statusQuery.data?.status)
-  const complete = status === 'completed'
-  const failed = status === 'failed'
-  return <main className="run-detail">
-    <header className="runs-nav"><Link href="/runs" className="back"><ArrowLeft size={15}/> all runs</Link><span className="brand"><span className="brand-mark">A</span>arbiter</span><span className="run-id">RUN {runId || '…'}</span></header>
-    <section className="run-content"><div className="eyebrow">{complete ? 'RESULTS / EVIDENCE' : 'LIVE RUN / INVESTIGATION'}</div><h1>{complete ? 'The evidence is in.' : failed ? 'The run needs attention.' : 'Watching certainty take shape.'}</h1><p className="runs-lede">{complete ? 'A readable account of every decision, from fast path to exception.' : 'Live state from the reconciliation engine. No simulated activity.'}</p>{statusQuery.error && <p className="run-message" role="alert">{statusQuery.error.message}</p>}{complete ? <Results runId={runId} /> : <Live query={statusQuery} status={status} failed={failed} runId={runId} />}</section>
-  </main>
-}
+  const resultQuery = useRunResults(runId)
 
-function Live({ query, status, failed, runId }: { query: ReturnType<typeof useRunStatus>; status: string; failed: boolean; runId: string }) {
-  const reduced = useReducedMotion()
-  const processed = asNumber(query.data?.records_processed) ?? 0
-  const total = asNumber(query.data?.total_records) ?? 0
-  const fast = asNumber(query.data?.fast_path_resolved_so_far) ?? 0
-  const agent = asNumber(query.data?.agent_resolved_so_far) ?? 0
-  const progress = total > 0 ? Math.min(100, processed / total * 100) : 0
-  const startedAtRef = useRef(Date.now())
-  const [elapsed, setElapsed] = useState(0)
-  const [activity, setActivity] = useState<string[]>([])
-  const previous = useRef({ processed, fast, agent, status })
+  const status = normalizeStatus(
+    statusQuery.data?.status,
+  )
 
-  useEffect(() => {
-    if (completeStatus(status) || failed) return
-    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000)), 1000)
-    return () => window.clearInterval(timer)
-  }, [status, failed])
+  const statusNotFound = isNotFoundError(
+    statusQuery.error,
+  )
 
-  useEffect(() => {
-    const next: string[] = []
-    const prev = previous.current
-    if (processed > prev.processed) next.push(`${processed - prev.processed} additional record${processed - prev.processed === 1 ? '' : 's'} processed.`)
-    if (fast > prev.fast) next.push(`Fast path resolved ${fast - prev.fast} additional record${fast - prev.fast === 1 ? '' : 's'}.`)
-    if (agent > prev.agent) next.push(`Agent-resolved count increased to ${agent}.`)
-    if (status !== prev.status) next.push(`Run entered ${labelStatus(status)} state.`)
-    if (next.length) setActivity(current => [...next, ...current].slice(0, 4))
-    previous.current = { processed, fast, agent, status }
-  }, [processed, fast, agent, status])
+  const hasPersistedResult = Boolean(
+    resultQuery.data,
+  )
 
-  const derived = failed ? (query.data?.error || 'The backend reported a failed run.') : status === 'pending' ? 'Waiting for processing to begin.' : `${processed} of ${total || '—'} records processed.`
-  return <motion.div className="live-panel glass liquid-focal" aria-live="polite" initial={reduced ? false : {opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{duration:.55}}>
-    <div className="live-heading"><span className="status-dot">● {failed ? 'attention' : 'live'}</span><span>{labelStatus(status)}</span></div>
-    <div className="live-hero"><div><span className="micro-label">RECONCILIATION PROGRESS</span><strong>{Math.round(progress)}%</strong><small>{processed} / {total || '—'} records</small></div><div className="elapsed"><span className="micro-label">OBSERVED TIME</span><b>{formatElapsed(elapsed)}</b></div></div>
-    <div className="progress" aria-label={`Run progress ${Math.round(progress)} percent`}><motion.i animate={{width:`${progress}%`}} transition={{duration:reduced?0:.55,ease:'easeOut'}}/></div>
-    <div className="live-stats"><Stat label="processed" value={total ? `${processed} / ${total}` : processed}/><Stat label="fast path" value={fast}/><Stat label="agent path" value={agent}/></div>
-    <div className="live-investigation glass"><div className="live-investigation-head"><span className="micro-label">CURRENT STATE</span><span className="status-dot">{failed ? 'attention' : 'active'}</span></div><h3>{failed ? 'Backend reported a failure.' : status === 'pending' ? 'Preparing the investigation.' : agent > fast ? 'Agent resolution in progress.' : 'Separating deterministic matches.'}</h3><p>{derived}</p></div>
-    <div className="activity-feed"><div className="micro-label">RECENT ACTIVITY</div>{activity.length ? activity.map((item,index) => <motion.div key={`${item}-${index}`} initial={reduced?false:{opacity:0,x:-8}} animate={{opacity:1,x:0}}><span>{index === 0 ? '→' : '✓'}</span>{item}</motion.div>) : <div><span>→</span>{derived}</div>}</div>
-    {failed && <p className="run-message" role="alert">{query.data?.error || 'No failure detail returned.'}</p>}
-  </motion.div>
-}
-
-function completeStatus(value: string) { return value === 'completed' || value === 'failed' }
-function formatElapsed(seconds: number) { const m=Math.floor(seconds/60); const s=seconds%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` }
-function Stat({label,value}:{label:string;value:unknown}) { return <div><span>{label}</span><b>{String(value)}</b></div> }
-
-function Results({ runId }: { runId: string }) {
-  const results = useRunResults(runId)
-  const exceptions = useRunExceptions(runId)
-  const search = useSearchParams()
-  const [traceOpen, setTraceOpen] = useState(Boolean(search.get('trace')))
-  const [selectedTrace, setSelectedTrace] = useState(search.get('trace') || '')
-  const result = results.data
-  const summary = resultSummary(result)
-  const ids = extractRecordIds(exceptions.data?.exceptions)
-  const traceRows = ids.slice(0, 8)
-
-  useEffect(() => {
-    const requested = search.get('trace') || ''
-    if (requested) { setSelectedTrace(requested); setTraceOpen(true) }
-  }, [search])
-
-  function openTrace(id: string) {
-    setSelectedTrace(id)
-    setTraceOpen(true)
-    const params = new URLSearchParams(search.toString())
-    params.set('trace', id)
-    window.history.replaceState(null, '', `?${params.toString()}`)
-  }
-
-  function closeTrace(open: boolean) {
-    setTraceOpen(open)
-    if (!open) {
-      const params = new URLSearchParams(search.toString())
-      params.delete('trace')
-      const query = params.toString()
-      window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
+  /*
+   * State machine:
+   *
+   * completed status
+   *       OR
+   * 404 status + persisted result
+   *       = completed
+   */
+  const phase: RunPhase = useMemo(() => {
+    if (status === 'completed') {
+      return 'completed'
     }
+
+    if (status === 'failed') {
+      return 'failed'
+    }
+
+    if (statusNotFound && hasPersistedResult) {
+      return 'completed'
+    }
+
+    if (statusNotFound && isNotFoundError(resultQuery.error)) {
+      return 'not-found'
+    }
+
+    if (status === 'running' || status === 'pending') {
+      return 'running'
+    }
+
+    if (
+      statusQuery.isPending &&
+      !statusQuery.error
+    ) {
+      return 'loading'
+    }
+
+    if (
+      resultQuery.isPending &&
+      !statusQuery.data &&
+      !statusQuery.error
+    ) {
+      return 'loading'
+    }
+
+    if (statusQuery.error && !statusNotFound) {
+      return 'unknown'
+    }
+
+    return 'unknown'
+  }, [
+    hasPersistedResult,
+    resultQuery.isPending,
+    status,
+    statusNotFound,
+    statusQuery.data,
+    statusQuery.error,
+    statusQuery.isPending,
+  ])
+
+  /* A run page may initially receive 425 while its result is still being
+   * written. Once status becomes terminal, request the immutable payload once
+   * more instead of leaving the page on the earlier 425 error. */
+  useEffect(() => {
+    if (status === 'completed' && !resultQuery.data) {
+      void resultQuery.refetch()
+    }
+  }, [resultQuery, status])
+
+  if (!runId) {
+    return (
+      <RunError message="No run id was supplied." />
+    )
   }
 
-  return <div className="results">
-    <div className="result-banner glass"><div><span className="eyebrow">COMPLETED RUN / BACKEND EVIDENCE</span><h2>Results are ready to inspect.</h2><p>{runId} · {result?.timestamp || result?.run_started_at || 'Timestamp not returned'}</p></div><ShieldCheck color="var(--mint)" size={28}/></div>
+  return (
+    <main className="run-detail">
+      <header className="runs-nav">
+        <Link
+          href="/runs"
+          className="back"
+        >
+          <ArrowLeft size={15} />
+          all runs
+        </Link>
 
-    {results.isPending ? <p aria-live="polite">Loading persisted result…</p> : results.error ? <p className="run-message" role="alert">{results.error.message}</p> : <>
-      {ids.length > 0 && <section className="result-section highlighted"><span className="eyebrow">HIGHLIGHTED CASES</span><h2>The evidence worth opening.</h2><p>{ids.length} backend-provided exception{ids.length === 1 ? '' : 's'} require inspection.</p><div className="trace-list">{traceRows.map(id => <div className="trace-row" key={id}><CircleAlert className="trace-icon" size={16}/><div><b>{id}</b><small>Open the backend reasoning trace and inspect its evidence.</small></div><button className="trace-open" onClick={() => openTrace(id)}>Inspect trace <ArrowUpRight size={15}/></button></div>)}</div></section>}
+        <span className="brand">
+          <span className="brand-mark">A</span>
+          arbiter
+        </span>
 
-      <section className="result-section"><span className="eyebrow">PROOF / KPI</span><div className="kpi-grid"><Kpi label="overall match rate" value={formatMetric(summary.overall)}/><Kpi label="records" value={summary.total ?? 'Not returned'}/><Kpi label="exceptions" value={summary.outcomes.find(x=>x.key.includes('exception'))?.count ?? 'Not returned'}/><Kpi label="agent resolved" value={summary.outcomes.find(x=>x.key.includes('agent'))?.count ?? 'Not returned'}/></div></section>
+        <span className="run-id">
+          RUN {runId}
+        </span>
+      </header>
 
-      <section className="result-grid"><OutcomeSection items={summary.outcomes}/><CompareSection full={result?.full_pipeline_scores} baseline={result?.baseline_scores}/></section>
-      <section className="result-grid"><ReadableSection title="PATTERN ANALYSIS" value={result?.breakdown}/><ReadableSection title="PERFORMANCE" value={result?.performance}/></section>
+      <section className="run-content">
+        <div className="eyebrow">
+          {phase === 'completed'
+            ? 'RESULTS / EVIDENCE'
+          : phase === 'failed'
+              ? 'RUN / FAILED'
+              : phase === 'not-found'
+                ? 'RUN / NOT FOUND'
+              : phase === 'loading'
+                ? 'RUN / OPENING'
+                : 'LIVE RUN / INVESTIGATION'}
+        </div>
 
-      {exceptions.isPending ? <p aria-live="polite">Loading exceptions…</p> : exceptions.error ? <p className="run-message" role="alert">{exceptions.error.message}</p> : <section className="result-section"><span className="eyebrow">EXCEPTIONS / DEAD LETTER QUEUE</span><div className="exception-list">{exceptionSummary(exceptions.data).slice(0,8).map(item => <details className="evidence-details" key={item.id}><summary><CircleAlert size={15}/>{item.id}</summary><Evidence rows={item.rows}/><button className="trace-open" onClick={()=>openTrace(item.id)}>Inspect trace <FileSearch size={14}/></button></details>)}</div></section>}
-      <section className="result-section traces-section"><span className="eyebrow">REASONING TRACES</span><p className="muted">Select an exception to inspect the backend evidence trail.</p>{traceRows.length ? traceRows.map(id=><button key={id} className="trace-index" onClick={()=>openTrace(id)}><span>{id}</span><ArrowUpRight size={14}/></button>) : <p className="muted">No traceable exception records returned.</p>}</section>
-    </>}
-    <TraceDrawer open={traceOpen} onOpenChange={closeTrace} recordId={selectedTrace || traceRows[0] || ''}/>
-  </div>
+        <motion.h1
+          key={phase}
+          initial={{
+            opacity: 0,
+            y: 8,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          transition={{
+            duration: 0.3,
+          }}
+        >
+          {phase === 'completed'
+            ? 'The evidence is in.'
+          : phase === 'failed'
+              ? 'The run needs attention.'
+              : phase === 'not-found'
+                ? 'This investigation could not be found.'
+              : phase === 'loading'
+                ? 'Opening the investigation.'
+                : phase === 'unknown'
+                  ? 'The run needs a closer look.'
+                  : 'Watching certainty take shape.'}
+        </motion.h1>
+
+        <p className="runs-lede">
+          {phase === 'completed'
+            ? 'A readable account of every decision, from fast path to exception.'
+          : phase === 'failed'
+              ? 'The reconciliation engine reported a failure for this run.'
+              : phase === 'not-found'
+                ? 'Neither the active run store nor persisted results contain this run id.'
+              : phase === 'loading'
+                ? 'Loading the latest state and persisted evidence.'
+                : phase === 'unknown'
+                  ? 'The current run state could not be determined.'
+                  : 'Live state from the reconciliation engine. No simulated activity.'}
+        </p>
+
+        {(phase === 'unknown' || phase === 'not-found') && (
+          <div
+            className="unavailable"
+            role="alert"
+          >
+            <CircleAlert size={16} />
+            <span>
+              {phase === 'not-found'
+                ? 'This run id is not present in the active service or persisted evidence.'
+                : statusQuery.error instanceof Error
+                ? statusQuery.error.message
+                : 'Unable to determine the current run state.'}
+            </span>
+          </div>
+        )}
+
+        {phase === 'completed' ? (
+          <Results
+            runId={runId}
+            resultQuery={resultQuery}
+          />
+        ) : phase === 'loading' ? (
+          <LoadingRun />
+        ) : phase === 'not-found' ? null : (
+          <Live
+            runId={runId}
+            query={statusQuery}
+            status={status}
+            failed={phase === 'failed'}
+          />
+        )}
+      </section>
+    </main>
+  )
 }
 
-function Kpi({label,value}:{label:string;value:unknown}) { return <div className="kpi"><span>{label}</span><strong>{String(value)}</strong></div> }
-function OutcomeSection({items}:{items:{key:string;label:string;count:number}[]}) { return <section className="result-section"><span className="eyebrow">OUTCOME DISTRIBUTION</span><div className="outcome-list">{items.length?items.map(item=><div key={item.key}><span>{item.label}</span><b>{item.count}</b><i style={{width:`${Math.min(100,item.count)}%`}}/></div>):<p className="muted">No breakdown returned.</p>}</div></section> }
-function CompareSection({full,baseline}:{full:unknown;baseline:unknown}) {
-  const fullOverall = asRecord(asRecord(full)?.overall)
-  const baseOverall = asRecord(asRecord(baseline)?.overall)
-  const keys = Array.from(new Set([...Object.keys(fullOverall ?? {}), ...Object.keys(baseOverall ?? {})]))
-  const numericKeys = keys.filter(key => typeof fullOverall?.[key] === 'number' || typeof baseOverall?.[key] === 'number')
-  return <section className="result-section"><span className="eyebrow">BASELINE / FULL PIPELINE</span>{numericKeys.length ? numericKeys.slice(0, 6).map(key => { const fullValue = fullOverall?.[key]; const baseValue = baseOverall?.[key]; const fullNum = typeof fullValue === 'number' ? fullValue : null; const baseNum = typeof baseValue === 'number' ? baseValue : null; return <div className="comparison" key={key}><span>{humanizeKey(key)}</span><b>{fullNum === null ? 'Not returned' : formatMetric(fullNum)}</b><small>baseline {baseNum === null ? 'Not returned' : formatMetric(baseNum)}</small>{fullNum !== null && baseNum !== null && <em className="delta">{formatDelta(fullNum, baseNum)}</em>}</div> }) : <p className="muted">No aggregate comparison returned.</p>}</section>
+/* -------------------------------------------------------------------------- */
+/* LOADING                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function LoadingRun() {
+  return (
+    <motion.div
+      className="live-panel glass liquid-focal"
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+    >
+      <div className="live-topline">
+        <span className="status-dot">
+          ● loading
+        </span>
+
+        <span>OPENING</span>
+      </div>
+
+      <div className="loading-run-state">
+        <div className="loading-orb" />
+
+        <span className="micro-label">
+          INVESTIGATION
+        </span>
+
+        <h2>
+          Loading live state and persisted evidence.
+        </h2>
+
+        <p>
+          Checking the run without starting another reconciliation.
+        </p>
+      </div>
+    </motion.div>
+  )
 }
-function humanizeKey(value: string) { return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase()) }
-function ReadableSection({title,value}:{title:string;value:unknown}) { return <section className="result-section"><span className="eyebrow">{title}</span><Evidence rows={evidenceRows(value)}/></section> }
-function Evidence({rows}:{rows:{label:string;value:string}[]}) { return rows.length?<div className="evidence-list">{rows.map(row=><div key={`${row.label}-${row.value}`}><span>{row.label}</span><b>{row.value}</b></div>)}</div>:<p className="muted">No structured evidence returned.</p> }
+
+/* -------------------------------------------------------------------------- */
+/* LIVE                                                                      */
+/* -------------------------------------------------------------------------- */
+
+function Live({
+  runId,
+  query,
+  status,
+  failed,
+}: {
+  runId: string
+  query: ReturnType<typeof useRunStatus>
+  status: string
+  failed: boolean
+}) {
+  const reduced = useReducedMotion()
+
+  const startedAtRef = useRef<number>(
+    Date.now(),
+  )
+
+  const previousRef = useRef<Snapshot | null>(
+    null,
+  )
+
+  const [now, setNow] = useState(
+    () => Date.now(),
+  )
+
+  const [activities, setActivities] =
+    useState<Activity[]>([])
+
+  /* The fast matcher can resolve its deterministic population before the
+   * browser receives its very first polling response. Begin the visual story
+   * at zero, then reveal the already-real snapshot shortly afterwards. This
+   * does not delay, alter, or fabricate backend progress. */
+  const [hasRevealedFirstSnapshot, setHasRevealedFirstSnapshot] =
+    useState(false)
+
+  const processed =
+    asNumber(
+      query.data?.records_processed,
+    ) ?? 0
+
+  const total =
+    asNumber(
+      query.data?.total_records,
+    ) ?? 0
+
+  const fast =
+    asNumber(
+      query.data?.fast_path_resolved_so_far,
+    ) ?? 0
+
+  const agent =
+    asNumber(
+      query.data?.agent_resolved_so_far,
+    ) ?? 0
+
+  const actualProgress =
+    total > 0
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            (processed / total) * 100,
+          ),
+        )
+      : 0
+
+  const visualProcessed =
+    hasRevealedFirstSnapshot
+      ? processed
+      : 0
+
+  const visualFast =
+    hasRevealedFirstSnapshot
+      ? fast
+      : 0
+
+  const visualAgent =
+    hasRevealedFirstSnapshot
+      ? agent
+      : 0
+
+  const progress =
+    hasRevealedFirstSnapshot
+      ? actualProgress
+      : 0
+
+  useEffect(() => {
+    if (!query.data || hasRevealedFirstSnapshot) {
+      return
+    }
+
+    const timer = window.setTimeout(
+      () => setHasRevealedFirstSnapshot(true),
+      700,
+    )
+
+    return () => window.clearTimeout(timer)
+  }, [hasRevealedFirstSnapshot, query.data])
+
+  const remaining =
+    Math.max(
+      0,
+      total - processed,
+    )
+
+  /*
+   * Client-observed elapsed time.
+   *
+   * This is deliberately NOT presented as backend
+   * processing time.
+   */
+  useEffect(() => {
+    let cancelled = false
+
+    const timer = window.setInterval(() => {
+      if (!cancelled) {
+        setNow(Date.now())
+      }
+    }, 1000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor(
+      (now - startedAtRef.current) /
+        1000,
+    ),
+  )
+
+  /*
+   * Derive activity from actual polling deltas.
+   *
+   * First snapshot is intentionally ignored.
+   * This prevents:
+   * "64 additional records processed"
+   * "Agent count increased to 26"
+   */
+  useEffect(() => {
+    if (!query.data) {
+      return
+    }
+
+    const current: Snapshot = {
+      processed,
+      fast,
+      agent,
+      status: query.data.status,
+    }
+
+    const previous =
+      previousRef.current
+
+    if (!previous) {
+      previousRef.current = current
+      return
+    }
+
+    const changes: Activity[] = []
+
+    const processedDelta =
+      processed - previous.processed
+
+    const fastDelta =
+      fast - previous.fast
+
+    const agentDelta =
+      agent - previous.agent
+
+    if (processedDelta > 0) {
+      changes.push({
+        id: `processed-${processed}-${now}`,
+        text: `${processedDelta} record${
+          processedDelta === 1
+            ? ''
+            : 's'
+        } processed.`,
+        kind: 'progress',
+      })
+    }
+
+    if (fastDelta > 0) {
+      changes.push({
+        id: `fast-${fast}-${now}`,
+        text: `${fastDelta} record${
+          fastDelta === 1
+            ? ''
+            : 's'
+        } resolved through the fast path.`,
+        kind: 'fast',
+      })
+    }
+
+    if (agentDelta > 0) {
+      changes.push({
+        id: `agent-${agent}-${now}`,
+        text: `${agentDelta} record${
+          agentDelta === 1
+            ? ''
+            : 's'
+        } resolved through the agent path.`,
+        kind: 'agent',
+      })
+    }
+
+    if (
+      query.data.status !==
+      previous.status
+    ) {
+      changes.push({
+        id: `status-${query.data.status}-${now}`,
+        text: `Run entered ${labelStatus(
+          query.data.status,
+        ).toLowerCase()} state.`,
+        kind: 'status',
+      })
+    }
+
+    if (changes.length > 0) {
+      setActivities(
+        (existing) =>
+          [
+            ...changes,
+            ...existing,
+          ].slice(0, 5),
+      )
+    }
+
+    previousRef.current = current
+  }, [
+    agent,
+    fast,
+    now,
+    processed,
+    query.data,
+  ])
+
+  const currentState = useMemo(() => {
+    if (failed) {
+      return (
+        query.data?.error ||
+        'The backend reported a failure.'
+      )
+    }
+
+    if (status === 'unknown') {
+      return 'The backend state is currently unavailable.'
+    }
+
+    if (status === 'pending') {
+      return 'Preparing the reconciliation.'
+    }
+
+    if (processed === 0) {
+      return 'Preparing the reconciliation.'
+    }
+
+    if (
+      agent > 0 &&
+      remaining > 0
+    ) {
+      return `Resolving ${remaining} ambiguous record${
+        remaining === 1
+          ? ''
+          : 's'
+      }.`
+    }
+
+    if (
+      fast > 0 &&
+      remaining > 0
+    ) {
+      return 'Separating deterministic matches.'
+    }
+
+    if (
+      remaining === 0 &&
+      status !== 'completed'
+    ) {
+      return 'Finishing the investigation.'
+    }
+
+    return 'Reconciliation in progress.'
+  }, [
+    agent,
+    failed,
+    fast,
+    processed,
+    query.data?.error,
+    remaining,
+    status,
+  ])
+
+  const formatClock = useCallback(
+    (seconds: number) => {
+      const minutes =
+        Math.floor(seconds / 60)
+
+      const remainder =
+        seconds % 60
+
+      return `${String(
+        minutes,
+      ).padStart(2, '0')}:${String(
+        remainder,
+      ).padStart(2, '0')}`
+    },
+    [],
+  )
+
+  return (
+    <motion.div
+      className="live-panel glass liquid-focal"
+      initial={
+        reduced
+          ? false
+          : {
+              opacity: 0,
+              y: 12,
+            }
+      }
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      transition={{
+        duration: reduced ? 0 : 0.35,
+      }}
+    >
+      <div className="live-topline">
+        <div className="live-heading">
+          <span className="status-dot">
+            ● {failed ? 'attention' : 'live'}
+          </span>
+
+          <span>
+            {failed
+              ? 'FAILED'
+              : labelStatus(status)}
+          </span>
+        </div>
+
+        <span className="live-run-id">
+          {runId}
+        </span>
+      </div>
+
+      <div className="live-hero-row">
+        <div>
+          <span className="micro-label">
+            RECONCILIATION PROGRESS
+          </span>
+
+          <motion.div
+            className="progress-number"
+            key={Math.round(progress)}
+            initial={
+              reduced
+                ? false
+                : {
+                    opacity: 0.35,
+                    y: 6,
+                  }
+            }
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              duration: reduced ? 0 : 0.2,
+            }}
+          >
+            {Math.round(progress)}%
+          </motion.div>
+
+          <span className="progress-caption">
+            {total > 0
+              ? `${visualProcessed} / ${total} records`
+              : 'Preparing dataset'}
+          </span>
+        </div>
+
+        <div className="observed-time">
+          <span className="micro-label">
+            OBSERVED TIME
+          </span>
+
+          <strong>
+            {formatClock(
+              elapsedSeconds,
+            )}
+          </strong>
+        </div>
+      </div>
+
+      <div
+        className="progress"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progress)}
+        aria-label={`Run progress ${Math.round(
+          progress,
+        )} percent`}
+      >
+        <motion.i
+          animate={{
+            width: `${progress}%`,
+          }}
+          transition={
+            reduced
+              ? {
+                  duration: 0,
+                }
+              : {
+                  type: 'spring',
+                  stiffness: 120,
+                  damping: 22,
+                }
+          }
+        />
+      </div>
+
+      <div className="live-stats">
+        <Stat
+          label="processed"
+          value={
+            total > 0
+              ? `${visualProcessed} / ${total}`
+              : visualProcessed
+          }
+        />
+
+        <Stat
+          label="fast path"
+          value={visualFast}
+        />
+
+        <Stat
+          label="agent path"
+          value={visualAgent}
+        />
+      </div>
+
+      <div className="current-state-card">
+        <div className="current-state-head">
+          <span className="micro-label">
+            CURRENT STATE
+          </span>
+
+          <span>
+            {failed
+              ? 'attention'
+              : 'active'}
+          </span>
+        </div>
+
+        <h2>
+          {hasRevealedFirstSnapshot
+            ? currentState
+            : 'Preparing the live investigation.'}
+        </h2>
+
+        <p>
+          {total > 0
+            ? hasRevealedFirstSnapshot
+              ? `${processed} of ${total} records processed.`
+              : `0 of ${total} records shown while the first live snapshot opens.`
+            : 'Waiting for the first progress signal.'}
+        </p>
+      </div>
+
+      <div className="activity-feed">
+        <div className="micro-label">
+          RECENT ACTIVITY
+        </div>
+
+        {activities.length === 0 ? (
+          <div className="activity-empty">
+            <span className="status-dot">
+              →
+            </span>
+
+            <span>
+              Waiting for the first state transition.
+            </span>
+          </div>
+        ) : (
+          <AnimatePresence initial={false}>
+            {activities.map(
+              (item) => (
+                <motion.div
+                  key={item.id}
+                  className="activity-item"
+                  initial={
+                    reduced
+                      ? false
+                      : {
+                          opacity: 0,
+                          y: -6,
+                        }
+                  }
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                  }}
+                  exit={{
+                    opacity: 0,
+                    height: 0,
+                  }}
+                  transition={{
+                    duration: reduced
+                      ? 0
+                      : 0.2,
+                  }}
+                >
+                  <span
+                    className={`activity-icon ${item.kind}`}
+                  >
+                    {item.kind ===
+                    'status' ? (
+                      '→'
+                    ) : (
+                      <Check
+                        size={13}
+                      />
+                    )}
+                  </span>
+
+                  <span>
+                    {item.text}
+                  </span>
+                </motion.div>
+              ),
+            )}
+          </AnimatePresence>
+        )}
+      </div>
+
+      {failed && (
+        <p
+          className="run-message"
+          role="alert"
+        >
+          {query.data?.error ||
+            'No failure detail returned.'}
+        </p>
+      )}
+    </motion.div>
+  )
+}
+
+function Stat({
+  label,
+  value,
+}: {
+  label: string
+  value: unknown
+}) {
+  return (
+    <div>
+      <span>{label}</span>
+      <b>{String(value)}</b>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* RESULTS                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function Results({
+  runId,
+  resultQuery,
+}: {
+  runId: string
+  resultQuery: ReturnType<
+    typeof useRunResults
+  >
+}) {
+  const searchParams =
+    useSearchParams()
+
+  const exceptions =
+    useRunExceptions(runId)
+
+  const result =
+    resultQuery.data
+
+  const [traceOpen, setTraceOpen] =
+    useState(
+      Boolean(
+        searchParams.get(
+          'trace',
+        ),
+      ),
+    )
+
+  const [
+    selectedTraceId,
+    setSelectedTraceId,
+  ] = useState(
+    searchParams.get(
+      'trace',
+    ) || '',
+  )
+
+  const summary =
+    resultSummary(result)
+
+  const exceptionItems =
+    exceptionSummary(
+      exceptions.data,
+    )
+
+  const recordIds =
+    extractRecordIds([
+      ...(exceptions.data
+        ?.exceptions ?? []),
+      ...(exceptions.data
+        ?.dead_letter_queue ?? []),
+    ])
+
+  const traceId =
+    selectedTraceId ||
+    recordIds[0] ||
+    ''
+
+  useEffect(() => {
+    const requested =
+      searchParams.get(
+        'trace',
+      )
+
+    if (!requested) {
+      return
+    }
+
+    setSelectedTraceId(
+      requested,
+    )
+    setTraceOpen(true)
+  }, [searchParams])
+
+  const openTrace = useCallback(
+    (recordId: string) => {
+      setSelectedTraceId(
+        recordId,
+      )
+      setTraceOpen(true)
+
+      const next =
+        new URLSearchParams(
+          searchParams.toString(),
+        )
+
+      next.set(
+        'trace',
+        recordId,
+      )
+
+      const query =
+        next.toString()
+
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.pathname}${
+          query
+            ? `?${query}`
+            : ''
+        }`,
+      )
+    },
+    [searchParams],
+  )
+
+  const closeTrace =
+    useCallback(
+      (open: boolean) => {
+        setTraceOpen(
+          open,
+        )
+
+        if (open) {
+          return
+        }
+
+        const next =
+          new URLSearchParams(
+            searchParams.toString(),
+          )
+
+        next.delete(
+          'trace',
+        )
+
+        const query =
+          next.toString()
+
+        window.history.replaceState(
+          window.history.state,
+          '',
+          query
+            ? `${window.location.pathname}?${query}`
+            : window.location.pathname,
+        )
+      },
+      [searchParams],
+    )
+
+  const fastConfirmed =
+    result?.breakdown
+      ?.fast_path_confirmed ??
+    0
+
+  const agentConfirmed =
+    result?.breakdown
+      ?.agent_confirmed ??
+    0
+
+  const exceptionCount =
+    result?.breakdown
+      ?.exception ??
+    0
+
+  return (
+    <div className="results">
+      <motion.div
+        className="result-banner glass"
+        initial={{
+          opacity: 0,
+          y: 10,
+        }}
+        animate={{
+          opacity: 1,
+          y: 0,
+        }}
+      >
+        <div>
+          <span className="eyebrow">
+            COMPLETED RUN / BACKEND EVIDENCE
+          </span>
+
+          <h2>
+            Results are ready to inspect.
+          </h2>
+
+          <p>
+            {runId}
+            {' · '}
+            {result?.timestamp ||
+              result?.run_started_at ||
+              'Timestamp unavailable'}
+          </p>
+        </div>
+
+        <ShieldCheck
+          color="var(--mint)"
+          size={28}
+        />
+      </motion.div>
+
+      <section className="result-section highlighted">
+        <span className="eyebrow">
+          HIGHLIGHTED CASES
+        </span>
+
+        <h2>
+          Where the Verifier mattered.
+        </h2>
+
+        <p>
+          {recordIds.length > 0
+            ? `${recordIds.length} backend-provided record${
+                recordIds.length ===
+                1
+                  ? ''
+                  : 's'
+              } need inspection.`
+            : 'No flagged records are waiting for investigation.'}
+        </p>
+
+        <div className="trace-list">
+          {recordIds
+            .slice(0, 6)
+            .map((id) => (
+              <button
+                className="trace-row trace-row-button"
+                key={id}
+                type="button"
+                onClick={() =>
+                  openTrace(id)
+                }
+              >
+                <CircleAlert
+                  size={16}
+                />
+
+                <span>
+                  <b>{id}</b>
+
+                  <small>
+                    Inspect proposal,
+                    evidence and final
+                    decision.
+                  </small>
+                </span>
+
+                <ArrowUpRight
+                  size={15}
+                />
+              </button>
+            ))}
+        </div>
+      </section>
+
+      <section className="result-section">
+        <span className="eyebrow">
+          PROOF / KPI
+        </span>
+
+        <div className="kpi-grid">
+          <Kpi
+            label="overall match rate"
+            value={formatMetric(
+              summary.overall,
+            )}
+          />
+
+          <Kpi
+            label="records"
+            value={
+              summary.total ??
+              '—'
+            }
+          />
+
+          <Kpi
+            label="fast path confirmed"
+            value={fastConfirmed}
+          />
+
+          <Kpi
+            label="agent confirmed"
+            value={agentConfirmed}
+          />
+
+          <Kpi
+            label="exceptions"
+            value={exceptionCount}
+          />
+        </div>
+      </section>
+
+      {resultQuery.isPending ? (
+        <div
+          className="chart-skeleton"
+          aria-label="Loading results"
+        />
+      ) : resultQuery.error ? (
+        <p
+          className="run-message"
+          role="alert"
+        >
+          {resultQuery.error.message}
+        </p>
+      ) : (
+        <>
+          <ResultsCharts
+            result={
+              result as Record<
+                string,
+                unknown
+              >
+            }
+            summary={{
+              overall:
+                summary.overall ?? null,
+              total:
+                summary.total ?? null,
+              outcomes:
+                summary.outcomes,
+            }}
+          />
+
+          <section className="result-grid">
+            <section className="result-section">
+              <span className="eyebrow">
+                EXCEPTIONS / DEAD LETTER QUEUE
+              </span>
+
+              {exceptions.isPending ? (
+                <div className="chart-skeleton" />
+              ) : exceptions.error ? (
+                <p
+                  className="run-message"
+                  role="alert"
+                >
+                  {exceptions.error.message}
+                </p>
+              ) : exceptionItems.length ? (
+                <div className="evidence-details">
+                  {exceptionItems
+                    .slice(0, 8)
+                    .map((item) => (
+                      <div
+                        className="exception-card"
+                        key={item.id}
+                      >
+                        <div>
+                          <span className="exception-id">
+                            {item.id}
+                          </span>
+
+                          <strong>
+                            {item.stage}
+                          </strong>
+                        </div>
+
+                        <p>
+                          {item.reason}
+                        </p>
+
+                        <button
+                          className="trace-open"
+                          type="button"
+                          onClick={() =>
+                            openTrace(
+                              item.id,
+                            )
+                          }
+                        >
+                          Inspect trace
+                          <FileSearch
+                            size={15}
+                          />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="muted">
+                  Every record resolved
+                  cleanly.
+                </p>
+              )}
+            </section>
+
+            <section className="result-section">
+              <span className="eyebrow">
+                REASONING TRACES
+              </span>
+
+              <p className="muted">
+                Select a backend-provided
+                exception to inspect its
+                evidence trail.
+              </p>
+
+              <div className="trace-list">
+                {recordIds.map(
+                  (id) => (
+                    <button
+                      className="trace-row trace-row-button"
+                      key={id}
+                      type="button"
+                      onClick={() =>
+                        openTrace(
+                          id,
+                        )
+                      }
+                    >
+                      <FileSearch
+                        size={15}
+                      />
+
+                      <span>
+                        {id}
+                      </span>
+
+                      <ArrowUpRight
+                        size={14}
+                      />
+                    </button>
+                  ),
+                )}
+              </div>
+            </section>
+          </section>
+        </>
+      )}
+
+      <TraceDrawer
+        open={traceOpen}
+        onOpenChange={
+          closeTrace
+        }
+        recordId={traceId}
+      />
+    </div>
+  )
+}
+
+function Kpi({
+  label,
+  value,
+}: {
+  label: string
+  value: unknown
+}) {
+  return (
+    <div className="kpi">
+      <span>{label}</span>
+      <strong>
+        {String(value)}
+      </strong>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* ERROR                                                                      */
+/* -------------------------------------------------------------------------- */
+
+function RunError({
+  message,
+}: {
+  message: string
+}) {
+  return (
+    <main className="run-detail">
+      <section className="run-content">
+        <p
+          className="run-message"
+          role="alert"
+        >
+          {message}
+        </p>
+      </section>
+    </main>
+  )
+}

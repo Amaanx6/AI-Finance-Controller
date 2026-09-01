@@ -34,7 +34,8 @@ class ScoreBlock(BaseModel):
 
 
 class RunResultsResponse(BaseModel):
-    # Backwards-compatible: older persisted files may not contain run_id.
+    # New runs persist this value. Optional preserves compatibility with older
+    # eval_run_*.json files created before run_id was added.
     run_id: Optional[str] = None
     run_started_at: str
     timestamp: str

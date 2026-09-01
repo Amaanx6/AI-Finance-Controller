@@ -36,31 +36,31 @@ The authoritative contract is the developer's FastAPI `/openapi.json`. The repos
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 pnpm generate:api
 ```
 
-This writes `lib/generated-api-types.ts`. If the backend is running on another machine, do not expose it publicly; place a local copy of the authoritative `openapi.json` in the project only if you want offline generation, then run `openapi-typescript ./openapi.json -o lib/generated-api-types.ts`.
+This writes `lib/generated-api-types.ts` and `lib/api-types.ts` imports its generated schema type. The generator is cross-platform and fetches the configured local FastAPI endpoint.
 
 ## Redis policy
 
 Redis is a cache/availability layer only; FastAPI remains the source of truth. Keys and TTLs:
 
-- `arbiter:results:latest` — 15 seconds
-- `arbiter:results:{run_id}` — 86400 seconds
-- `arbiter:exceptions:{run_id}` — 86400 seconds
-- `arbiter:trace:{record_id}` — 86400 seconds
+- `reconcile:results:latest` — 15 seconds
+- `reconcile:results:{run_id}` — 86400 seconds
+- `reconcile:exceptions:{run_id}` — 86400 seconds
+- `reconcile:trace:{record_id}` — 86400 seconds
 - status is never Redis-cached
 
 Redis failures bypass cleanly to FastAPI. Error responses are never cached. Connected variables are `KV_REST_API_URL`, `KV_REST_API_TOKEN` (or the equivalent `UPSTASH_REDIS_REST_URL` and token names).
 
 ## Run persistence and loading UX
 
-`run_id` lives in the URL, not browser storage. Mounting `/runs/[runId]` reads that ID, queries `['status', runId]`, and polls every 2000ms until normalized status is exactly `completed` or `failed`; unknown states remain visible and continue polling. Progress, processed counts, fast-path counts, agent counts, and activity text are shown only when returned by FastAPI.
+`run_id` lives in the URL, not browser storage. Mounting `/runs/[runId]` starts both `['status', runId]` and `['results', runId]` at the page level. Pending/running status polls every 2000ms; completed/failed/404 stop polling. A transient status 404 then checks the durable `/results/{run_id}` record: a 200 renders Results, while a second 404 renders Not Found. This makes completed runs viewable after a FastAPI restart without starting a new run.
 
-Completed views query results and exceptions separately. Highlighted cases appear before aggregate data so the judge sees where verification changed confidence first. Trace IDs are backend-provided; the drawer renders history, final decision, status, provider, and timing defensively.
+Completed views query immutable results and exceptions separately. They show a Bklit gauge, outcome donut, baseline/full comparison, pattern analysis, latency, and provider distribution from the actual result payload. Highlighted cases appear before aggregate data. Trace IDs are backend-provided; the drawer recursively renders nested proposer, verifier, decision, identity, and timing evidence without a raw JSON viewer.
 
 ## Visual system
 
 The landing uses the supplied near-black, Fora-inspired editorial composition: asymmetric grids, deliberate whitespace, restrained glass hierarchy, immersive investigation visual, and a mint evidence accent. LiquidGlass is used selectively for focal surfaces rather than every card. Motion uses `motion/react`; `framer-motion` is not used. Reduced motion disables movement-heavy transitions while preserving content and state changes.
 
-No Bklit package is present in the supplied project dependencies or contract. Charts are therefore represented with accessible semantic data sections rather than falsely describing custom markup as Bklit. If a project-specific Bklit package is provided, it can replace those presentation primitives without changing the API view models.
+The chart layer uses the locally installed Bklit source components under `components/charts/`: `Gauge`, `PieChart`, `PieSlice`, `BarChart`, `Bar`, `Grid`, `BarXAxis`, and `ChartTooltip`. It does not import a nonexistent `@bklitui/ui` package.
 
 ## Accessibility and responsive behavior
 
@@ -77,4 +77,4 @@ Set `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` in `.env.local` (the code a
 
 ## Final verification boundary
 
-Verified from frontend code: route mapping, same-origin requests, idempotency forwarding, typed contract architecture, TanStack Query keys/polling, Redis key policy, URL run persistence, defensive rendering, Motion/LiquidGlass usage, and accessible drawer behavior. Requires the developer backend runtime: OpenAPI generation output, real run transitions, real results/exceptions/traces, Redis hit/miss behavior, and browser verification with actual backend payloads.
+Validated with the local FastAPI service: OpenAPI generation, a durable run where `GET /status/{run_id}` returned 404 and `GET /results/{run_id}` returned 200, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and the rendered persisted-results browser route. A full newly-started agent run and Redis hit/miss behavior depend on the configured provider and Redis credentials.
