@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
@@ -13,6 +13,7 @@ from backend.app.api.schemas import (
     ReasoningTraceResponse,
     RunExceptionsResponse,
     RunResultsResponse,
+    RunResultsSummary,
     RunStartResponse,
     RunStatusResponse,
 )
@@ -120,6 +121,40 @@ async def get_latest_results() -> RunResultsResponse:
     payload = dict(state.results)
     payload["run_id"] = state.run_id
     return RunResultsResponse(**payload)
+
+
+@router.get("/results", response_model=List[RunResultsSummary])
+async def list_results() -> List[RunResultsSummary]:
+    """Return compact summaries for every durable run, newest first."""
+    summaries: List[RunResultsSummary] = []
+    for filepath in sorted(RESULTS_DIR.glob("eval_run_*.json"), reverse=True):
+        try:
+            payload = _load_result(filepath)
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+        summaries.append(RunResultsSummary(
+            run_id=payload.get("run_id"),
+            run_started_at=payload.get("run_started_at"),
+            timestamp=payload.get("timestamp"),
+            provider_mode=payload.get("provider_mode"),
+            total_records=payload.get("total_records"),
+            overall_match_rate=payload.get("overall_match_rate"),
+            breakdown=payload.get("breakdown") or {},
+        ))
+    return summaries
+
+
+@router.get("/results/by-timestamp/{timestamp}", response_model=RunResultsResponse)
+async def get_result_by_timestamp(timestamp: str) -> RunResultsResponse:
+    """Read a legacy persisted result whose file predates run_id metadata."""
+    for filepath in RESULTS_DIR.glob("eval_run_*.json"):
+        try:
+            payload = _load_result(filepath)
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+        if payload.get("timestamp") == timestamp:
+            return RunResultsResponse(**payload)
+    raise HTTPException(status_code=404, detail=f"No persisted result found for timestamp '{timestamp}'.")
 
 
 @router.get("/results/{run_id}", response_model=RunResultsResponse)
