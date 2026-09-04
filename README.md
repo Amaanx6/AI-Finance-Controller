@@ -27,44 +27,7 @@ The system is designed to handle all four cases and produce an **auditable resul
 
 ## Architecture
 
-<p align="center">
-  <img src="docs/architecture.png" alt="AI Finance Controller Architecture" width="900">
-</p>
-
-The reconciliation pipeline has two tiers:
-
-```text
-Bank + Ledger + Gateway
-          ↓
-Normalization
-          ↓
-Deterministic Fast Path
-          │
-          ├── Confident → Confirmed Match
-          │
-          └── Ambiguous / Unresolved
-                         ↓
-                  Proposer Agent
-                         ↓
-                    Tool Layer
-               ┌─────────┴─────────┐
-               │                   │
-          sum_check       description_similarity
-               │                   │
-               └─────────┬─────────┘
-                         ↓
-                  Verifier Agent
-                    /          \
-                 Agree       Disagree
-                   ↓             ↓
-              Confirmed      One Retry
-                                  ↓
-                           Still Unclear
-                                  ↓
-                              Exception
-```
-
----
+<img width="1536" height="1024" alt="ChatGPT Image Sep 4, 2026, 09_56_24 PM (1)" src="https://github.com/user-attachments/assets/de7ead96-95df-4d8c-8d04-3d2499f90cb4" />
 
 ## Deterministic Fast Path
 
@@ -95,9 +58,8 @@ Ambiguous and unresolved cases move to the agent layer instead of being guessed.
 
 ## Proposer–Verifier Design
 
-<p align="center">
-  <img src="docs/proposer-verifier.png" alt="Proposer Verifier Agent Loop" width="900">
-</p>
+<img width="1536" height="1024" alt="ChatGPT Image Sep 4, 2026, 09_56_24 PM (2)" src="https://github.com/user-attachments/assets/b4dac62e-7f59-4984-be92-17534aad04c7" />
+
 
 The agent path uses two separate roles.
 
