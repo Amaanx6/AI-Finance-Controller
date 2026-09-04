@@ -531,7 +531,7 @@ async def get_run_reasoning_trace(run_id: str, record_id: str, session_id: Optio
 
 
 @router.get("/reasoning-trace/{record_id}", response_model=ReasoningTraceResponse)
-async def get_reasoning_trace(record_id: str) -> ReasoningTraceResponse:
+async def get_reasoning_trace(record_id: str) -> ReasoningTraceResponse: # pyright: ignore[reportReturnType]
     """Legacy trace lookup retained for older persisted runs."""
     filepath = TRACE_DIR / f"{record_id}.json"
 

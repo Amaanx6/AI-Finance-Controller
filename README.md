@@ -1,151 +1,481 @@
 # AI Finance Controller
 
-A sophisticated reconciliation engine that closes the finance-ops loop across a batch of synthetic financial data (bank statements, internal ledgers, and gateway exports).
+An agentic financial reconciliation system that reconciles messy **bank statements, internal ledgers, and payment-gateway exports**.
 
-This project goes beyond basic script-matching by employing a **two-tier architecture**: a deterministic fast-path for clean records, and a dual-agent **Proposer-Verifier LLM pipeline** to intelligently resolve ambiguous exceptions, many-to-one settlements, and heavily decoyed transaction descriptions.
+The core idea is simple:
 
-## 🧠 Why This Isn't Just a Matching Script (AI Judgment)
+> **Use deterministic logic for straightforward matches. Use AI only for genuine ambiguity, then independently verify the AI's decision.**
 
-Early on, we realized a pure deterministic script (e.g., pandas + fuzzy matching) would fail the "AI Judgment" criteria. Real-world reconciliation features edge cases that rule-based systems simply cannot safely resolve:
+This avoids wasting LLM calls on easy records while reducing the risk of confidently accepting a wrong match.
 
-* **Many-to-one settlements:** One bank entry equals the sum of several ledger entries minus a payment gateway fee. No 1:1 match exists.
-* **Description mismatches & Decoys:** Same transaction, wildly different text ("RZRPY SETL 08/19" vs "Razorpay settlement batch #4471"). We introduced deliberate decoy records (matching amount/date but completely wrong entity) to prove that only semantic reasoning—not just string matching—can resolve genuine ambiguity.
+---
 
-## 🏗️ Architecture: Two-Tier Reconciliation
+## What It Solves
 
-<p align="center">
-  <img
-    src="https://github.com/user-attachments/assets/12444bae-a734-40f4-9855-cfaa7625bb15"
-    alt="Agentic Reconciliation Architecture"
-    width="750"
-  />
-</p>
+Financial reconciliation becomes difficult when the same transaction appears differently across systems.
 
-Our pipeline ensures maximum throughput by letting code handle the easy majority, reserving expensive LLM cycles exclusively for genuine edge cases.
+Examples include:
 
-1. **Data Normalization:** Standardizes dates, amounts, and IDs across all 3 raw sources.
-2. **Deterministic Fast Path:**
-* Exact reference-number match $\rightarrow$ *Auto-confirmed*
-* Tolerance match (amount ±1%, date ±3 days) with exactly 1 candidate $\rightarrow$ *Confirmed*
-* Zero or Multiple candidates $\rightarrow$ *Routed to AI*
+- One bank settlement representing multiple ledger entries after a gateway fee.
+- The same transaction having completely different descriptions across systems.
+- Multiple candidates having similar amounts and dates, including deliberately planted decoys.
+- Genuine anomalies that should remain unresolved instead of being guessed.
 
+The system is designed to handle all four cases and produce an **auditable result with an honest exception list**.
 
-3. **LLM Reasoning Agents (The Exception Path):**
-* Unresolved records are passed to the AI with specific tool-calling capabilities (`sum_check` for batched settlements, `description_similarity` for semantic search).
+---
 
-
-
-### The Differentiator: Proposer-Verifier Agent Architecture
-
-A single agent proposing matches is dangerous—it will confidently hallucinate a connection to a decoy record. To solve the industry bottleneck of *verification capacity*, we built a dual-agent system:
-
-* **Proposer Agent:** Analyzes the unresolved record and candidates, uses tools, and suggests a match with a reasoning trace.
-* **Verifier Agent:** Independently reviews the proposal with a strict system prompt instructing it to actively *argue against* the match and hunt for flaws.
-* **Agree:** Match confirmed.
-* **Disagree:** Forces a retry with more evidence.
-* **Still Disagrees:** Escalates to an honest, human-readable **Exception Log**.
+## Architecture
 
 <p align="center">
-  <img
-    src="https://github.com/user-attachments/assets/8377f3a0-cb0a-4102-9098-49dfcd59488b"
-    alt="Proposer Verifier Agent Loop"
-    width="800"
-  />
+  <img src="docs/architecture.png" alt="AI Finance Controller Architecture" width="900">
 </p>
 
+The reconciliation pipeline has two tiers:
 
+```text
+Bank + Ledger + Gateway
+          ↓
+Normalization
+          ↓
+Deterministic Fast Path
+          │
+          ├── Confident → Confirmed Match
+          │
+          └── Ambiguous / Unresolved
+                         ↓
+                  Proposer Agent
+                         ↓
+                    Tool Layer
+               ┌─────────┴─────────┐
+               │                   │
+          sum_check       description_similarity
+               │                   │
+               └─────────┬─────────┘
+                         ↓
+                  Verifier Agent
+                    /          \
+                 Agree       Disagree
+                   ↓             ↓
+              Confirmed      One Retry
+                                  ↓
+                           Still Unclear
+                                  ↓
+                              Exception
+```
 
-## 📊 Synthetic Data Design
+---
 
-We built a 69-record batch of deliberately messy transactions across a 3-week window, evaluated against an isolated `mapping.csv` ground truth that the AI never sees.
+## Deterministic Fast Path
 
-| Pattern | % of Data | Description |
-| --- | --- | --- |
-| **Clean 1:1 Matches** | ~40% | Same transaction, all 3 sources, exact ID matches. |
-| **Many-to-one** | ~20% | One bank entry = sum of 2-4 ledger entries minus a fee. |
-| **Mismatches & Decoys** | ~15% | Wildly different text + deliberate decoy records to fool fuzzy matchers. |
-| **Near-miss Noise** | ~15% | Small rounding/fee variance or date drift. |
-| **Genuine Anomalies** | ~10% | Appear in only one source, correctly flagged as unresolved. |
+The fast path handles the majority of records without an LLM.
 
-## 💻 Tech Stack
+### 1. Reference match
 
-* **Backend:** Python, FastAPI
-* **AI / LLM:** Groq API (Primary - high speed, tool-calling support), Google Gemini API (Fallback)
-* **Frontend:** Next.js, React, TypeScript (App Router)
-* **Data Layer:** In-memory CSVs and JSON files (purpose-built for hackathon portability)
+Records are matched using reference numbers when available.
 
-## 🚀 Quick Start
+A reference match is also checked for **amount consistency**. A suspicious amount mismatch is flagged rather than blindly confirmed.
 
-### Backend Setup
+### 2. Tolerance match
+
+For records without a reliable reference match, the system considers approximately:
+
+- **Amount:** ±1%
+- **Date:** ±3 days
+
+Exactly one candidate can be confirmed.
+
+Multiple candidates are treated as ambiguous.
+
+No candidates are treated as unresolved.
+
+Ambiguous and unresolved cases move to the agent layer instead of being guessed.
+
+---
+
+## Proposer–Verifier Design
+
+<p align="center">
+  <img src="docs/proposer-verifier.png" alt="Proposer Verifier Agent Loop" width="900">
+</p>
+
+The agent path uses two separate roles.
+
+### Proposer
+
+The Proposer investigates one unresolved or ambiguous record and suggests a match using the available evidence and tools.
+
+### Verifier
+
+The Verifier independently challenges that proposal.
+
+It is specifically instructed to look for:
+
+- incorrect candidates
+- decoy records
+- weak evidence
+- amount/date inconsistencies
+- incorrect settlement combinations
+
+The Verifier is not there to rubber-stamp the Proposer.
+
+```text
+Proposer
+   ↓
+Verifier
+   ├── Agree → Confirmed
+   └── Disagree → Retry with objection
+                      ↓
+                 Still unclear
+                      ↓
+                  Exception
+```
+
+This makes the AI component about **judgment under ambiguity**, not simply adding an LLM to a matching script.
+
+---
+
+## Agent Tools
+
+### `sum_check`
+
+Used for many-to-one settlements.
+
+It searches candidate combinations and checks whether their total explains the target amount within the configured fee tolerance.
+
+A real bug was found here: a wrong cross-batch combination could be numerically closer than the correct settlement.
+
+The tool was changed to rank candidates using **settlement consistency first, numerical closeness second**.
+
+### `description_similarity`
+
+Used as supporting semantic evidence when descriptions differ across systems.
+
+Low similarity is not treated as an automatic rejection because legitimate transactions can have very different descriptions.
+
+---
+
+## Synthetic Data
+
+The dataset is deliberately messy and contains several transaction patterns:
+
+| Pattern | Approx. Share | Purpose |
+|---|---:|---|
+| Clean 1:1 | ~40% | Straightforward deterministic matches |
+| Many-to-one | ~20% | Settlement batching and fee differences |
+| Description mismatch + decoys | ~15% | Tests semantic reasoning and false positives |
+| Near-miss noise | ~15% | Small amount/date deviations |
+| Genuine anomalies | ~10% | Cases that should remain unresolved |
+
+The ground-truth mapping is isolated from the matching pipeline and is used only for evaluation.
+
+---
+
+## Proof Cases
+
+### `BANK_0042`
+
+A description-mismatch case with an unlabeled decoy.
+
+The correct ledger record matches the amount exactly even though description similarity is very low.
+
+The final logic correctly avoids treating low text similarity as an automatic veto.
+
+### `BANK_0028`
+
+A many-to-one settlement where four ledger records form the correct settlement.
+
+A deliberately wrong cross-batch combination is numerically closer, which exposed the need for consistency-aware subset ranking.
+
+---
+
+## Multiple LLM Providers
+
+The agent layer supports:
+
+```text
+local
+Groq
+gemini
+auto
+```
+
+Local inference uses **Ollama + qwen2.5:7b**.
+
+Cloud providers use OpenAI-compatible tool-calling interfaces so the same agent logic can work across providers.
+
+The `auto` mode allows provider-aware routing and helps distribute work when cloud rate limits become the bottleneck.
+
+---
+
+## Async Processing
+
+Agent resolution is significantly slower than deterministic matching, so the backend runs reconciliation as an asynchronous job instead of blocking one HTTP request until the entire batch finishes.
+
+The frontend polls backend status and displays live progress using real runtime state.
+
+This also allows multiple agent records to be processed concurrently with bounded concurrency.
+
+---
+
+## Backend and Frontend
+
+### Backend
+
+- Python
+- FastAPI
+- Async job execution
+- CSV input data
+- JSON result persistence
+- Provider-aware LLM routing
+
+### Frontend
+
+- Next.js
+- React
+- TypeScript
+- TanStack Query
+- Tailwind CSS
+
+The frontend is driven by backend API data rather than browser-side fake progress or hardcoded results.
+
+---
+
+## API
+
+```text
+POST /api/run
+GET  /api/status/{run_id}
+GET  /api/results/{run_id}
+GET  /api/results/latest
+GET  /api/reasoning-trace/{record_id}
+GET  /api/exceptions/{run_id}
+```
+
+`/api/results/latest` is used by the Runs control room to load the newest completed persisted result.
+
+Completed results are stored under `results/` as JSON files.
+
+---
+
+## Quick Start
+
+### Backend
 
 ```bash
 cd backend
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env
-# Edit .env and add your GROQ_API_KEY
-
-# Run the server
-uvicorn app.main:app --reload --port 8000
-
 ```
 
-Backend API will be live at: `http://localhost:8000`
+Windows:
 
-### Frontend Setup
+```powershell
+venv\Scripts\activate
+```
+
+Linux/macOS:
+
+```bash
+source venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Create your environment file:
+
+```text
+backend/.env
+```
+
+using:
+
+```text
+backend/.env.example
+```
+
+Then run:
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
 
 ```bash
 cd frontend
-
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-
+pnpm install
+pnpm run dev
 ```
 
-Frontend UI will be live at: `http://localhost:3000`
+Frontend:
 
-## 📁 Project Structure
+```text
+http://localhost:3000
+```
+
+Backend:
+
+```text
+http://localhost:8000
+```
+
+### Run Both From the Root
+
+The repository also includes a root development command:
+
+```bash
+pnpm run dev
+```
+
+This starts the Next.js frontend and FastAPI backend together.
+
+---
+
+## Testing
+
+Backend tests:
+
+```bash
+cd backend
+python -m pytest tests/ -v
+```
+
+The test suite covers the matching and agent-tool foundations, including reference matching, tolerance matching, amount sanity checks, subset matching, and description similarity.
+
+---
+
+## Evaluation
+
+The evaluation layer compares reconciliation output against the held-out ground truth and measures both **coverage** and **correctness**.
+
+Important metrics include:
+
+- overall match rate
+- precision
+- recall
+- fast-path vs agent resolution
+- accuracy by transaction pattern
+- single-agent vs proposer-verifier performance
+- latency and throughput
+
+An earlier full benchmark reached approximately **95.5% precision** with approximately **3.85× sequential speedup** under the tested configuration.
+
+A later completed run also verified the durable-results path with a 64-record batch and a **71.88% overall match rate**. These values come from different runs and should not be treated as the same benchmark.
+
+---
+
+## Real Engineering Problems We Found
+
+This project was built by testing failure cases, not just the happy path.
+
+### Decoy leakage
+
+Early decoys had explicit labels that revealed the answer.
+
+**Fix:** regenerated realistic, unlabeled decoys.
+
+### Cross-batch subset bug
+
+A wrong settlement combination could beat the correct one on numerical closeness.
+
+**Fix:** consistency-aware ranking.
+
+### Empty agent decisions
+
+An empty model response could previously be treated as a valid decision.
+
+**Fix:** explicit retry/failure handling.
+
+### LLM API/tool-call failures
+
+Provider-specific response behavior caused tool-call and structured-output failures.
+
+**Fix:** explicit terminal decision tools, bounded retries, and provider-specific recovery.
+
+### Token and rate-limit pressure
+
+Large candidate payloads and growing multi-turn history caused unnecessary token usage.
+
+**Fix:** smaller payloads, tighter turn limits, throttling, and concurrent provider-aware execution.
+
+### Live progress blocking
+
+Synchronous matching work could block the FastAPI event loop.
+
+**Fix:** move blocking work off the event loop so status polling continues during a run.
+
+### Stale latest result
+
+The latest-results endpoint could return an older persisted file because result files were traversed in the wrong order.
+
+**Fix:** newest-first result selection.
+
+---
+
+## Why the Architecture Matters
+
+The project is not trying to maximize the number of records that receive an answer.
+
+It is trying to maximize the number of records that receive a **defensible answer**.
+
+That leads to three deliberate behaviors:
+
+```text
+Easy case
+   → deterministic confirmation
+
+Ambiguous case
+   → AI investigation + independent verification
+
+Unsafe case
+   → explicit exception
+```
+
+That is the core design principle of the system.
+
+---
+
+## Project Structure
 
 ```text
 RazorPay/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── config.py
 │   │   ├── data_generation/
-│   │   │   ├── generator.py
-│   │   │   ├── samples/          # (3 messy CSVs)
-│   │   │   └── ground_truth/     # (isolated answer key)
 │   │   ├── matcher/
-│   │   │   ├── fast_matcher.py   # (exact + tolerance matching)
-│   │   │   └── reconciler.py     # (orchestrates fast path -> AI)
 │   │   ├── agent/
-│   │   │   ├── llm_agent.py      # (Proposer-Verifier loop)
-│   │   │   ├── tools.py          # (sum-check & similarity)
-│   │   │   └── prompts.py        # (system instructions)
 │   │   ├── api/
-│   │   │   ├── routes.py
-│   │   │   └── schemas.py
-│   │   └── eval/                 # (scoring against ground truth)
+│   │   └── eval/
+│   ├── tests/
 │   ├── requirements.txt
-│   └── .env
+│   └── .env.example
+│
 ├── frontend/
-│   ├── src/
-│   │   ├── app/ 
-│   │   ├── components/           # (Results, Traces, Exception Lists)
-│   │   ├── types/
-│   │   └── lib/api.ts
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   ├── scripts/
 │   └── package.json
+│
+├── docs/
+│   ├── architecture.png
+│   └── proposer-verifier.png
+│
+├── results/
+├── logs/
+├── run_state/
+├── uploads/
+├── package.json
 └── README.md
-
 ```
+
+---
+
+## Core Principle
+
+> **Deterministic when possible. Agentic when necessary. Verified before trusted. Honest when uncertain.**
+
