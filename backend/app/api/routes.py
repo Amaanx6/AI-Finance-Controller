@@ -36,6 +36,33 @@ def _load_result(path: Path) -> dict:
     return payload
 
 
+def _exception_records_from_result(payload: dict) -> List[dict]:
+    scores = payload.get("full_pipeline_scores") or {}
+    detail_rows = scores.get("detail_rows") or []
+    records = []
+
+    for row in detail_rows:
+        if not isinstance(row, dict):
+            continue
+
+        status = str(row.get("predicted_status") or "").lower()
+        record_id = row.get("bank_record_id")
+        if status not in {"exception", "dlq"} or not record_id:
+            continue
+
+        records.append(
+            {
+                "record_id": str(record_id),
+                "stage": "agent_resolution",
+                "reason": "This record was not automatically resolved.",
+                "provider": payload.get("provider_mode"),
+                "detail": "Persisted evaluation marked this record for review.",
+            }
+        )
+
+    return records
+
+
 async def _attach_legacy_run_id(payload: dict) -> dict:
     """Compatibility only for an older file missing run_id.
 
@@ -236,9 +263,10 @@ async def get_exceptions(run_id: str) -> RunExceptionsResponse:
                 continue
             if payload.get("run_id") == run_id:
                 dlq = payload.get("dead_letter_queue") or []
+                exceptions = _exception_records_from_result(payload)
                 return RunExceptionsResponse(
                     run_id=run_id,
-                    exceptions=[],
+                    exceptions=[ExceptionRecord(**item) for item in exceptions],
                     dead_letter_queue=[ExceptionRecord(**item) for item in dlq],
                 )
         raise HTTPException(status_code=404, detail=f"No run found with id '{run_id}'.")
