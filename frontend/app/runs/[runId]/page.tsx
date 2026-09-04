@@ -89,7 +89,6 @@ type Snapshot = {
 
 export default function RunPage() {
   const { runId = '' } = useParams<{ runId: string }>()
-  const router = useRouter()
 
   /*
    * BOTH queries live here.
@@ -261,7 +260,7 @@ export default function RunPage() {
                 ? 'Loading the latest state and persisted evidence.'
                 : phase === 'unknown'
                   ? 'The current run state could not be determined.'
-                  : 'Live state from the reconciliation engine. No simulated activity.'}
+                  : 'Live state from the reconciliation engine.'}
         </p>
 
         {(phase === 'unknown' || phase === 'not-found') && (
@@ -293,7 +292,6 @@ export default function RunPage() {
             query={statusQuery}
             status={status}
             failed={phase === 'failed' || phase === 'cancelled'}
-            onCancelled={() => router.replace('/runs')}
           />
         )}
       </section>
@@ -354,15 +352,14 @@ function Live({
   query,
   status,
   failed,
-  onCancelled,
 }: {
   runId: string
   query: ReturnType<typeof useRunStatus>
   status: string
   failed: boolean
-  onCancelled: () => void
 }) {
   const reduced = useReducedMotion()
+  const router = useRouter()
 
   const startedAtRef = useRef<number>(
     Date.now(),
@@ -381,41 +378,16 @@ function Live({
   const [cancelling, setCancelling] = useState(false)
 
   async function cancelRun() {
-    if (cancelling || status === 'completed' || status === 'cancelled') {
-      return
-    }
-
+    if (cancelling || status === 'completed' || status === 'cancelled') return
     setCancelling(true)
-
     try {
-      const response = await fetch(
-        `/api/runs/${encodeURIComponent(runId)}/cancel`,
-        { method: 'POST' },
-      )
-
-      const data = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        throw new Error(
-          data?.detail ||
-          data?.message ||
-          'Unable to cancel this run.',
-        )
-      }
-
-      onCancelled()
-    } catch (error) {
-      console.error('Cancel run failed:', error)
+      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+      if (!response.ok) throw new Error('Unable to cancel this run.')
+      router.replace('/runs')
+    } finally {
       setCancelling(false)
     }
   }
-
-  /* The fast matcher can resolve its deterministic population before the
-   * browser receives its very first polling response. Begin the visual story
-   * at zero, then reveal the already-real snapshot shortly afterwards. This
-   * does not delay, alter, or fabricate backend progress. */
-  const [hasRevealedFirstSnapshot, setHasRevealedFirstSnapshot] =
-    useState(false)
 
   const processed =
     asNumber(
@@ -448,46 +420,16 @@ function Live({
         )
       : 0
 
-  const visualProcessed =
-    hasRevealedFirstSnapshot
-      ? processed
-      : 0
-
-  const visualFast =
-    hasRevealedFirstSnapshot
-      ? fast
-      : 0
-
-  const visualAgent =
-    hasRevealedFirstSnapshot
-      ? agent
-      : 0
-
-  const progress =
-    hasRevealedFirstSnapshot
-      ? actualProgress
-      : 0
-
-  useEffect(() => {
-    if (!query.data || hasRevealedFirstSnapshot) {
-      return
-    }
-
-    const timer = window.setTimeout(
-      () => setHasRevealedFirstSnapshot(true),
-      1800,
-    )
-
-    return () => window.clearTimeout(timer)
-  }, [hasRevealedFirstSnapshot, query.data])
+  const visualProcessed = processed
+  const visualFast = fast
+  const visualAgent = agent
+  const progress = actualProgress
 
   const remaining =
     Math.max(
       0,
       total - processed,
     )
-
-  const agentQueue = Math.max(0, total - fast)
 
   const stages = [
     {
@@ -497,22 +439,46 @@ function Live({
     },
     {
       label: 'Fast matching',
-      detail: hasRevealedFirstSnapshot
-        ? `${fast} confirmed automatically · ${agentQueue} sent to review`
-        : 'Separating deterministic matches',
-      state: hasRevealedFirstSnapshot ? 'done' : 'active',
+      detail:
+        total === 0
+          ? 'Starts after the dataset is loaded'
+          : agent > 0 || processed >= total
+            ? `${fast} confirmed automatically`
+            : `${processed} of ${total} records processed`,
+      state:
+        total === 0
+          ? 'waiting'
+          : agent > 0 || processed >= total
+            ? 'done'
+            : 'active',
     },
     {
       label: 'Evidence review',
-      detail: agentQueue > 0
-        ? `${agent} of ${agentQueue} ambiguous records resolved`
-        : 'No ambiguous records require review',
-      state: agentQueue === 0 || agent >= agentQueue ? 'done' : 'active',
+      detail:
+        agent > 0
+          ? `${agent} record${agent === 1 ? '' : 's'} resolved by review`
+          : processed >= total && total > 0
+            ? 'No additional review work'
+            : 'Starts after automatic matching',
+      state:
+        total === 0 || (processed < total && agent === 0)
+          ? 'waiting'
+          : processed >= total
+            ? 'done'
+            : 'active',
     },
     {
       label: 'Results',
-      detail: 'Evidence dashboard prepared when review completes',
-      state: 'waiting',
+      detail:
+        status === 'completed'
+          ? 'Evidence dashboard ready'
+          : 'Available when reconciliation completes',
+      state:
+        status === 'completed'
+          ? 'done'
+          : processed >= total && total > 0
+            ? 'active'
+            : 'waiting',
     },
   ]
 
@@ -894,21 +860,23 @@ function Live({
           <span>
             {failed
               ? 'attention'
-              : 'active'}
+              : status === 'completed'
+                ? 'complete'
+                : status === 'cancelled'
+                  ? 'cancelled'
+                  : status === 'pending'
+                    ? 'waiting'
+                    : 'active'}
           </span>
         </div>
 
         <h2>
-          {hasRevealedFirstSnapshot
-            ? currentState
-            : 'Preparing the live investigation.'}
+          {currentState}
         </h2>
 
         <p>
           {total > 0
-            ? hasRevealedFirstSnapshot
-              ? `${processed} of ${total} records processed.`
-              : `0 of ${total} records shown while the first live snapshot opens.`
+            ? `${processed} of ${total} records processed.`
             : 'Waiting for the first progress signal.'}
         </p>
       </div>

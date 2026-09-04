@@ -157,7 +157,9 @@ async def execute_run(run_id: str) -> None:
 
     # Set the denominator before the first poll.
     try:
-        total_records = len(evaluate.load_csv(bank_path))
+        total_records = await asyncio.to_thread(
+            lambda: len(evaluate.load_csv(bank_path))
+        )
     except Exception as exc:
         await run_store.update_run(
             run_id,
@@ -186,12 +188,17 @@ async def execute_run(run_id: str) -> None:
         cooldown_seconds=30.0,
     )
 
+    loop = asyncio.get_running_loop()
+
+    def _schedule(coro) -> None:
+        asyncio.run_coroutine_threadsafe(coro, loop)
+
     def on_fast_progress(
         _completed: int,
         total: int,
         result: Optional[Any] = None,
     ) -> None:
-        asyncio.create_task(
+        _schedule(
             run_store.record_fast_path_progress(
                 run_id,
                 total,
@@ -200,13 +207,13 @@ async def execute_run(run_id: str) -> None:
         )
 
     def on_agent_progress(_result: dict) -> None:
-        asyncio.create_task(run_store.bump_agent_progress(run_id))
+        _schedule(run_store.bump_agent_progress(run_id))
 
     def on_exception(exc_record: dict) -> None:
-        asyncio.create_task(run_store.append_exception(run_id, exc_record))
+        _schedule(run_store.append_exception(run_id, exc_record))
 
     def on_dlq(dlq_record: dict) -> None:
-        asyncio.create_task(run_store.append_dlq(run_id, dlq_record))
+        _schedule(run_store.append_dlq(run_id, dlq_record))
 
     try:
         results_payload = await evaluate.run_evaluation(

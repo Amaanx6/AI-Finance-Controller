@@ -47,6 +47,7 @@ async def _dispatch_run(run_id: str) -> None:
 def _result_files() -> List[Path]:
     return sorted(
         (path for path in RESULTS_DIR.rglob("eval_run_*.json") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
 
@@ -380,10 +381,12 @@ async def cancel_run(
 
 @router.get("/results/latest", response_model=RunResultsResponse)
 async def get_latest_results() -> RunResultsResponse:
-    """Return the newest persisted reconciliation result."""
+    """Return the newest non-cancelled persisted reconciliation result."""
     files = _result_files()
 
-    for filepath in reversed(files):
+    # _result_files() is already ordered newest-first by file modification time.
+    # Never reverse it: doing so selects the oldest result.
+    for filepath in files:
         try:
             payload = _load_result(filepath)
             payload = await _attach_legacy_run_id(payload)

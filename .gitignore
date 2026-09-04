@@ -74,3 +74,4 @@ logs/
 *.loglogs/
 results/
 run_state/
+uploads/

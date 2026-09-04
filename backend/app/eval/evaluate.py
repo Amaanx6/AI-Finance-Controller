@@ -583,8 +583,12 @@ async def run_evaluation(
         raise asyncio.CancelledError()
 
     fast_start = time.time()
-    fast_results = fast_match_bank_records(
-        bank_records, ledger_records, gateway_records, progress_callback=_fast_cb
+    fast_results = await asyncio.to_thread(
+        fast_match_bank_records,
+        bank_records,
+        ledger_records,
+        gateway_records,
+        progress_callback=_fast_cb,
     )
     fast_elapsed = time.time() - fast_start
     avg_fast_latency = fast_elapsed / total_records if total_records else 0.0
