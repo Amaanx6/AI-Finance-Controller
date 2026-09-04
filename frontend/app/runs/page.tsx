@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowUpRight, CircleAlert, Clock3, Play, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useAllResults, useLatestResults, useRunResults } from '@/lib/queries'
@@ -19,6 +19,7 @@ function formatDate(value: string | null | undefined) {
 }
 
 function summaryLabel(run: RunResultsSummary) {
+  if (run.status === 'pending' || run.status === 'running') return 'Reconciliation in progress'
   const confirmed = (run.breakdown?.fast_path_confirmed ?? 0) + (run.breakdown?.agent_confirmed ?? 0)
   return `${confirmed} resolved · ${run.breakdown?.exception ?? 0} need attention`
 }
@@ -38,6 +39,11 @@ export default function RunsPage() {
   const history = useAllResults()
   const [selectedId, setSelectedId] = useState('')
   const [running, setRunning] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [files, setFiles] = useState<{ bank?: File; ledger?: File; gateway?: File }>({})
+  const bankInput = useRef<HTMLInputElement>(null)
+  const ledgerInput = useRef<HTMLInputElement>(null)
+  const gatewayInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('Ready to investigate a new dataset.')
   const [caseFilter, setCaseFilter] = useState<'all' | 'review'>('review')
   const [caseSearch, setCaseSearch] = useState('')
@@ -55,6 +61,25 @@ export default function RunsPage() {
       if (!response.ok || !data.run_id) throw new Error(data.detail || 'Unable to start the reconciliation.')
       router.push(`/runs/${encodeURIComponent(data.run_id)}`)
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Backend unavailable.'); setRunning(false) }
+  }
+
+  async function uploadAndRun() {
+    if (!files.bank || !files.ledger || !files.gateway) {
+      setMessage('Choose bank, ledger, and gateway CSV files first.')
+      return
+    }
+    setUploading(true); setMessage('Validating the dataset and starting reconciliation…')
+    try {
+      const form = new FormData()
+      form.set('bank', files.bank)
+      form.set('ledger', files.ledger)
+      form.set('gateway', files.gateway)
+      const response = await fetch('/api/runs/upload', { method: 'POST', body: form, headers: { 'Idempotency-Key': crypto.randomUUID() } })
+      const data = await response.json()
+      if (!response.ok || !data.run_id) throw new Error(data.detail || 'Unable to upload the dataset.')
+      window.localStorage.setItem('arbiter:last-run-id', data.run_id)
+      router.push(`/runs/${encodeURIComponent(data.run_id)}`)
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Upload failed.'); setUploading(false) }
   }
 
   const result = selected.data ?? latest.data
@@ -84,9 +109,11 @@ export default function RunsPage() {
     <section className="dashboard-shell">
       <aside className="dashboard-sidebar glass">
         <div className="sidebar-heading"><div><span className="eyebrow">WORKSPACE</span><h2>Runs</h2></div><button className="icon-btn" type="button" aria-label="Refresh runs" onClick={() => void history.refetch()}><RefreshCw size={15} /></button></div>
-        <button className="primary-btn dashboard-new-run" onClick={start} disabled={running} type="button">{running ? <RefreshCw className="spin" size={16} /> : <Play size={16} />}{running ? 'Starting…' : 'New reconciliation'}<ArrowUpRight size={15} /></button>
+        <button className="primary-btn dashboard-new-run" onClick={start} disabled={running || uploading} type="button">{running ? <RefreshCw className="spin" size={16} /> : <Play size={16} />}{running ? 'Starting…' : 'Use sample dataset'}<ArrowUpRight size={15} /></button>
+        <div className="upload-panel"><div><span className="eyebrow">YOUR DATA</span><h3>Reconcile CSV files</h3><p>Upload one bank statement, ledger, and gateway export.</p></div><label className="upload-file">Bank statement<input ref={bankInput} type="file" accept=".csv,text/csv" onChange={(event) => setFiles((current) => ({ ...current, bank: event.target.files?.[0] }))} /><span>{files.bank?.name || 'Choose CSV'}</span></label><label className="upload-file">Internal ledger<input ref={ledgerInput} type="file" accept=".csv,text/csv" onChange={(event) => setFiles((current) => ({ ...current, ledger: event.target.files?.[0] }))} /><span>{files.ledger?.name || 'Choose CSV'}</span></label><label className="upload-file">Gateway export<input ref={gatewayInput} type="file" accept=".csv,text/csv" onChange={(event) => setFiles((current) => ({ ...current, gateway: event.target.files?.[0] }))} /><span>{files.gateway?.name || 'Choose CSV'}</span></label><button className="secondary-btn upload-submit" onClick={uploadAndRun} disabled={uploading || running} type="button">{uploading ? <RefreshCw className="spin" size={15} /> : <ArrowUpRight size={15} />}{uploading ? 'Preparing…' : 'Run uploaded dataset'}</button></div>
+        {message && <p className="sidebar-message" aria-live="polite">{message}</p>}
         <div className="sidebar-section-label">RECENT RUNS</div>
-        {history.isPending ? <p className="muted">Loading persisted runs…</p> : history.error ? <p className="run-message" role="alert">{history.error.message}</p> : runList.length ? <div className="run-history-list">{runList.map((run) => { const key = run.run_id ?? (run.timestamp ? `legacy:${run.timestamp}` : ''); return <button type="button" className={`run-history-item ${selectedId === key ? 'selected' : ''}`} key={key} disabled={!key} onClick={() => key && setSelectedId(key)}><span className="run-history-status"><i /> completed</span><b>{formatDate(run.timestamp || run.run_started_at)}</b><small>{run.run_id || 'Persisted result · legacy identity'}</small><span>{summaryLabel(run)}</span></button> })}</div> : <div className="empty"><span>NO RUNS YET</span><small>Start a reconciliation to create the first durable result.</small></div>}
+        {history.isPending ? <p className="muted">Loading persisted runs…</p> : history.error ? <p className="run-message" role="alert">{history.error.message}</p> : runList.length ? <div className="run-history-list">{runList.map((run) => { const key = run.run_id ?? (run.timestamp ? `legacy:${run.timestamp}` : ''); const active = run.status === 'pending' || run.status === 'running'; return <button type="button" className={`run-history-item ${selectedId === key ? 'selected' : ''}`} key={key} disabled={!key} onClick={() => key && setSelectedId(key)}><span className={`run-history-status ${active ? 'active' : ''}`}><i /> {active ? run.status : 'completed'}</span><b>{formatDate(run.timestamp || run.run_started_at)}</b><small>{run.run_id || 'Persisted result · legacy identity'}</small><span>{summaryLabel(run)}</span></button> })}</div> : <div className="empty"><span>NO RUNS YET</span><small>Start a reconciliation to create the first durable result.</small></div>}
         <div className="sidebar-footer"><span><ShieldCheck size={14} /> Persisted evidence</span><span><Clock3 size={14} /> Read-only history</span></div>
       </aside>
 
@@ -95,11 +122,12 @@ export default function RunsPage() {
         {result ? <>
           <section className="dashboard-hero glass"><div><span className="micro-label">SELECTED INVESTIGATION</span><h2>{exceptionCount ? `${exceptionCount} records need attention.` : 'Every record resolved cleanly.'}</h2><p>{resolved} of {result.total_records ?? '—'} records resolved · {formatMetric(result.overall_match_rate)} overall match rate.</p><small>{formatDate(result.timestamp || result.run_started_at)} · {result.provider_mode || 'Provider unavailable'}</small></div>{result.run_id ? <Link className="trace-open" href={`/runs/${encodeURIComponent(result.run_id)}`}>Open full run <ArrowUpRight size={15} /></Link> : <span className="latest-note">Legacy persisted result · detail shown here</span>}</section>
           <section className="dashboard-kpis"><DashboardKpi label="Match rate" value={formatMetric(result.overall_match_rate)} detail="Full pipeline outcome" tone="mint" /><DashboardKpi label="Resolved" value={resolved} detail={`${result.total_records ?? '—'} total records`} tone="mint" /><DashboardKpi label="Automatic" value={breakdown?.fast_path_confirmed ?? 0} detail="Fast-path matches" tone="blue" /><DashboardKpi label="Attention" value={exceptionCount} detail="Exceptions surfaced" tone="amber" /></section>
+          {result.dataset_manifest && Object.keys(result.dataset_manifest).length > 0 && <section className="dataset-manifest"><div><span className="eyebrow">DATASET MANIFEST</span><h2>Inputs behind this decision.</h2><p>Every uploaded source is identified, counted, and hashed for replay.</p></div><div className="manifest-list">{Object.entries(result.dataset_manifest).map(([key, file]) => <div className="manifest-item" key={key}><span>{key.replaceAll('_', ' ')}</span><b>{String(file.filename ?? 'Uploaded CSV')}</b><small>{String(file.rows ?? '—')} rows · {String(file.sha256 ?? '').slice(0, 12)}…</small></div>)}</div></section>}
           <section className="dashboard-baseline glass"><div><span className="eyebrow">DECISION QUALITY</span><h2>Arbiter knows when to stop.</h2><p>Compare the full pipeline with the rules-only baseline before trusting an outcome.</p></div><div className="baseline-stats"><BaselineStat label="Accuracy" baseline={metricBlock(metricBlock(result.baseline_scores).overall).accuracy} arbiter={metricBlock(metricBlock(result.full_pipeline_scores).overall).accuracy} /><BaselineStat label="Precision" baseline={metricBlock(metricBlock(result.baseline_scores).overall).precision} arbiter={metricBlock(metricBlock(result.full_pipeline_scores).overall).precision} /><BaselineStat label="Recall" baseline={metricBlock(metricBlock(result.baseline_scores).overall).recall} arbiter={metricBlock(metricBlock(result.full_pipeline_scores).overall).recall} /></div></section>
           <section className="repro-card glass"><div><span className="eyebrow">REPRODUCIBILITY</span><h2>Every result can be explained and replayed.</h2></div><div className="repro-meta"><span>Dataset <b>{String(metricBlock(result.reproducibility).dataset_version ?? 'Not recorded')}</b></span><span>Provider <b>{String(metricBlock(result.reproducibility).provider ?? result.provider_mode ?? 'Not recorded')}</b></span><span>Model <b>{String(metricBlock(result.reproducibility).model ?? 'Provider default')}</b></span><span>Prompts <b>{String(metricBlock(result.reproducibility).prompt_version ?? 'Not recorded')}</b></span></div></section>
           <section className="financial-impact"><div><span className="eyebrow">FINANCIAL IMPACT</span><h2>Follow the money, not just the records.</h2><p>Value is separated by how safely each decision was reached.</p></div><div className="financial-grid"><FinancialStat label="Total value" value={formatMoney(metricBlock(result.financial_impact).total_value, metricBlock(result.financial_impact).currency)} /><FinancialStat label="Auto-reconciled" value={formatMoney(metricBlock(result.financial_impact).automatically_reconciled_value, metricBlock(result.financial_impact).currency)} /><FinancialStat label="Needs review" value={formatMoney(metricBlock(result.financial_impact).value_requiring_review, metricBlock(result.financial_impact).currency)} tone="attention" /></div></section>
           <div className="dashboard-outcomes"><div><span className="eyebrow">OUTCOME SNAPSHOT</span><h2>How the selected run performed</h2></div><div className="outcome-pills">{outcomeItems.map((item) => <span key={item.key}><i className={`outcome-dot ${item.key}`} /><b>{item.count}</b> {item.label}</span>)}</div></div>
-          <section className="review-queue" aria-labelledby="review-queue-title"><div className="review-queue-heading"><div><span className="eyebrow">ATTENTION QUEUE</span><h2 id="review-queue-title">Cases that need a human decision.</h2><p>Start with the records Arbiter could not safely auto-confirm.</p></div><div className="review-controls"><div className="segmented-control" role="group" aria-label="Case filter"><button className={caseFilter === 'review' ? 'active' : ''} onClick={() => setCaseFilter('review')} type="button">Needs review</button><button className={caseFilter === 'all' ? 'active' : ''} onClick={() => setCaseFilter('all')} type="button">All cases</button></div><input value={caseSearch} onChange={(event) => setCaseSearch(event.target.value)} placeholder="Search record or pattern" aria-label="Search cases" /></div></div>{reviewRows.length ? <div className="review-list">{reviewRows.map((row) => <article className="review-row" key={String(row.bank_record_id)}><div className="review-row-id"><span className={`review-status ${String(row.predicted_status) === 'exception' ? 'exception' : row.correct === false ? 'warning' : 'resolved'}`} /> <b>{String(row.bank_record_id ?? 'Unknown record')}</b><small>{String(row.pattern ?? 'Unclassified').replaceAll('_', ' ')}</small></div><div className="review-row-summary"><span>{row.correct === false ? 'Needs verification' : String(row.predicted_status ?? 'resolved')}</span><small>{row.predicted_ledger_ids ? `Ledger: ${String(row.predicted_ledger_ids)}` : 'No ledger evidence returned'}</small></div><button className="secondary-btn" type="button" disabled={!result.run_id} title={result.run_id ? 'Open evidence trace' : 'Legacy result has no live trace route'} onClick={() => result.run_id && router.push(`/runs/${encodeURIComponent(result.run_id)}?record=${encodeURIComponent(String(row.bank_record_id ?? ''))}`)}>{result.run_id ? 'Inspect case' : 'Historical only'} {result.run_id && <ArrowUpRight size={14} />}</button></article>)}</div> : <div className="review-empty">No cases match this view.</div>}</section>
+          <section className="review-queue" aria-labelledby="review-queue-title"><div className="review-queue-heading"><div><span className="eyebrow">ATTENTION QUEUE</span><h2 id="review-queue-title">Cases that need a human decision.</h2><p>Start with the records Arbiter could not safely auto-confirm.</p></div><div className="review-controls"><div className="segmented-control" role="group" aria-label="Case filter"><button className={caseFilter === 'review' ? 'active' : ''} onClick={() => setCaseFilter('review')} type="button">Needs review</button><button className={caseFilter === 'all' ? 'active' : ''} onClick={() => setCaseFilter('all')} type="button">All cases</button></div><input value={caseSearch} onChange={(event) => setCaseSearch(event.target.value)} placeholder="Search record or pattern" aria-label="Search cases" /></div></div>{reviewRows.length ? <div className="review-list">{reviewRows.map((row) => <article className="review-row" key={String(row.bank_record_id)}><div className="review-row-id"><span className={`review-status ${String(row.predicted_status) === 'exception' ? 'exception' : row.correct === false ? 'warning' : 'resolved'}`} /> <b>{String(row.bank_record_id ?? 'Unknown record')}</b><small>{String(row.pattern ?? 'Unclassified').replaceAll('_', ' ')}</small></div><div className="review-row-summary"><span>{row.correct === false ? 'Needs verification' : String(row.predicted_status ?? 'resolved')}</span><small>{row.predicted_ledger_ids ? `Ledger: ${String(row.predicted_ledger_ids)}` : 'No ledger evidence returned'}</small></div><button className="secondary-btn" type="button" disabled={!result.run_id} title={result.run_id ? 'Open evidence trace' : 'Legacy result has no live trace route'} onClick={() => result.run_id && router.push(`/runs/${encodeURIComponent(result.run_id)}?trace=${encodeURIComponent(String(row.bank_record_id ?? ''))}`)}>{result.run_id ? 'Inspect case' : 'Historical only'} {result.run_id && <ArrowUpRight size={14} />}</button></article>)}</div> : <div className="review-empty">No cases match this view.</div>}</section>
           <ResultsCharts result={result as Record<string, unknown>} summary={{ overall: result.overall_match_rate ?? null, total: result.total_records ?? null, outcomes: outcomeItems }} />
         </> : <div className="dashboard-empty glass"><CircleAlert size={22} /><h2>No persisted reconciliation selected</h2><p>Start a new run or choose one from the history panel.</p><button className="primary-btn" onClick={start} disabled={running} type="button"><Play size={15} /> Run reconciliation</button></div>}
       </div>

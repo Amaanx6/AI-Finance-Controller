@@ -75,7 +75,8 @@ async def resolve_record(
     bank_record: Dict[str, Any],
     all_ledger: List[Dict[str, Any]],
     all_gateway: List[Dict[str, Any]],
-    assigned_key: KeyState
+    assigned_key: KeyState,
+    trace_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     
     start_time = time.time()
@@ -100,7 +101,7 @@ async def resolve_record(
         if status in ["no_match", "flagged"] or not prop_res.get("matched_ledger_ids"):
             trace["final_status"] = "exception"
             trace["final_decision"] = prop_res
-            _save_trace(record_id, trace, start_time)
+            _save_trace(record_id, trace, start_time, trace_dir)
             return trace
 
         # Verifier Call 1
@@ -116,7 +117,7 @@ async def resolve_record(
         if ver_res.get("decision") == "agree":
             trace["final_status"] = "confirmed"
             trace["final_decision"] = prop_res
-            _save_trace(record_id, trace, start_time)
+            _save_trace(record_id, trace, start_time, trace_dir)
             return trace
 
         # ONE-TURN CONTINUATION APPEND
@@ -140,7 +141,7 @@ async def resolve_record(
             if old_ledger == new_ledger and old_gateway == new_gateway:
                 trace["final_status"] = "exception"
                 trace["final_decision"] = prop_res_retry
-                _save_trace(record_id, trace, start_time)
+                _save_trace(record_id, trace, start_time, trace_dir)
                 return trace
 
             ver_res_retry = await run_verifier(
@@ -155,18 +156,23 @@ async def resolve_record(
             if ver_res_retry.get("decision") == "agree":
                 trace["final_status"] = "confirmed"
                 trace["final_decision"] = prop_res_retry
-                _save_trace(record_id, trace, start_time)
+                _save_trace(record_id, trace, start_time, trace_dir)
                 return trace
 
         trace["final_status"] = "exception"
         trace["final_decision"] = prop_res_retry
-        _save_trace(record_id, trace, start_time)
+        _save_trace(record_id, trace, start_time, trace_dir)
         return trace
     finally:
         stop_wait_tracking(wait_token)
 
 
-def _save_trace(record_id: str, trace: Dict[str, Any], start_time: float) -> None:
+def _save_trace(
+    record_id: str,
+    trace: Dict[str, Any],
+    start_time: float,
+    trace_dir: Optional[Path] = None,
+) -> None:
     elapsed = time.time() - start_time
     breakdown = get_accumulated_wait_breakdown()
     reactive = breakdown["reactive"]
@@ -179,7 +185,9 @@ def _save_trace(record_id: str, trace: Dict[str, Any], start_time: float) -> Non
     trace["reactive_throttle_wait_sec"] = round(reactive, 2)
     trace["self_paced_wait_sec"] = round(self_paced, 2)
     trace["other_pacing_wait_sec"] = round(other, 2)
-    filepath = TRACE_DIR / f"{record_id}.json"
+    destination = trace_dir or TRACE_DIR
+    destination.mkdir(parents=True, exist_ok=True)
+    filepath = destination / f"{record_id}.json"
     with open(filepath, "w") as f:
         json.dump(trace, f, indent=2)
 

@@ -2,20 +2,22 @@ import { NextRequest } from 'next/server'
 import { cached, cachePolicy, redis } from '@/lib/redis'
 
 const backend = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
-type ProxyResult = { body: string; status: number; contentType: string }
+type ProxyResult = { body: string; status: number; contentType: string; setCookie?: string }
 
 async function fetchUpstream(request: NextRequest, routePath: string): Promise<ProxyResult> {
   const upstreamPath = routePath === 'health' || routePath === 'openapi.json' ? routePath : `api/${routePath}`
   const target = `${backend}/${upstreamPath}${request.nextUrl.search}`
   const headers = new Headers()
-  for (const name of ['content-type', 'accept', 'idempotency-key']) {
+  for (const name of ['content-type', 'accept', 'idempotency-key', 'cookie']) {
     const value = request.headers.get(name)
     if (value) headers.set(name, value)
   }
-  const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text()
+  const body = request.method === 'GET' || request.method === 'HEAD'
+    ? undefined
+    : new Uint8Array(await request.arrayBuffer())
   try {
     const response = await fetch(target, { method: request.method, headers, body, cache: 'no-store' })
-    return { body: await response.text(), status: response.status, contentType: response.headers.get('content-type') || 'application/json' }
+    return { body: await response.text(), status: response.status, contentType: response.headers.get('content-type') || 'application/json', setCookie: response.headers.get('set-cookie') || undefined }
   } catch (error) {
     console.error('[v0] FastAPI proxy unavailable:', error)
     return { body: JSON.stringify({ detail: 'The reconciliation backend is unavailable. Start FastAPI on http://localhost:8000 and try again.' }), status: 502, contentType: 'application/json' }
@@ -41,7 +43,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   if (request.method === 'POST' && routePath === 'run' && redis) {
     try { await redis.del(cachePolicy.latestResults.key) } catch (error) { console.warn('[v0] Latest-result cache invalidation bypass:', error) }
   }
-  return new Response(result.body, { status: result.status, headers: { 'content-type': result.contentType } })
+  const responseHeaders = new Headers({ 'content-type': result.contentType })
+  if (result.setCookie) responseHeaders.set('set-cookie', result.setCookie)
+  return new Response(result.body, { status: result.status, headers: responseHeaders })
 }
 
 export const GET = proxy

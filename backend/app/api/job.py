@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Optional
 
@@ -119,11 +120,44 @@ def _persist_run_id(run_id: str) -> None:
 
 
 async def execute_run(run_id: str) -> None:
+    state = await run_store.get_run(run_id)
+    if state is None or state.status == RunStatus.CANCELLED:
+        return
+
     await run_store.update_run(run_id, status=RunStatus.RUNNING)
+
+    async def is_cancelled() -> bool:
+        current = await run_store.get_run(run_id)
+        return current is None or current.status == RunStatus.CANCELLED
+
+    def discard_cancelled_artifacts() -> None:
+        for path in (
+            Path(evaluate.RESULTS_DIR) / run_id,
+            Path(evaluate.BASE_DIR) / "logs" / "reasoning_trace" / run_id,
+        ):
+            try:
+                if path.exists():
+                    shutil.rmtree(path)
+            except OSError as exc:
+                log_event(
+                    "cancel_cleanup_failed",
+                    run_id,
+                    level="warning",
+                    path=str(path),
+                    error=str(exc),
+                )
+
+    input_dir = Path(state.input_dir) if state and state.input_dir else None
+    bank_path = input_dir / "bank.csv" if input_dir else evaluate.BANK_CSV
+    ledger_path = input_dir / "ledger.csv" if input_dir else evaluate.LEDGER_CSV
+    gateway_path = input_dir / "gateway.csv" if input_dir else evaluate.GATEWAY_CSV
+    ground_truth_path = input_dir / "ground_truth.csv" if input_dir and (input_dir / "ground_truth.csv").exists() else evaluate.GROUND_TRUTH_CSV
+    results_dir = Path(evaluate.RESULTS_DIR) / run_id
+    trace_dir = Path(evaluate.BASE_DIR) / "logs" / "reasoning_trace" / run_id
 
     # Set the denominator before the first poll.
     try:
-        total_records = len(evaluate.load_csv(evaluate.BANK_CSV))
+        total_records = len(evaluate.load_csv(bank_path))
     except Exception as exc:
         await run_store.update_run(
             run_id,
@@ -177,15 +211,28 @@ async def execute_run(run_id: str) -> None:
     try:
         results_payload = await evaluate.run_evaluation(
             run_id=run_id,
+            bank_path=bank_path,
+            ledger_path=ledger_path,
+            gateway_path=gateway_path,
+            ground_truth_path=ground_truth_path,
+            results_dir=results_dir,
+            trace_dir=trace_dir,
             fast_progress_cb=on_fast_progress,
             agent_progress_cb=on_agent_progress,
             exception_cb=on_exception,
             dlq_cb=on_dlq,
             circuit_breaker=circuit_breaker,
+            cancel_check=is_cancelled,
         )
+
+        current_state = await run_store.get_run(run_id)
+        if current_state is None or current_state.status == RunStatus.CANCELLED:
+            discard_cancelled_artifacts()
+            return
 
         results_payload = dict(results_payload)
         results_payload["run_id"] = run_id
+        results_payload["dataset_manifest"] = state.dataset_manifest if state else {}
 
         # run_evaluation writes the authoritative run id into its original
         # durable file. Keep the defensive helper only for compatibility with
@@ -237,7 +284,24 @@ async def execute_run(run_id: str) -> None:
 
         log_event("run_finished", run_id, status="completed")
 
+    except asyncio.CancelledError:
+        discard_cancelled_artifacts()
+        await run_store.update_run(
+            run_id,
+            status=RunStatus.CANCELLED,
+            error="Run cancelled by the user.",
+        )
+        log_event(
+            "run_finished",
+            run_id,
+            status="cancelled",
+        )
     except Exception as exc:  # noqa: BLE001
+        current_state = await run_store.get_run(run_id)
+        if current_state is not None and current_state.status == RunStatus.CANCELLED:
+            discard_cancelled_artifacts()
+            return
+
         log_event(
             "run_finished",
             run_id,
@@ -250,3 +314,5 @@ async def execute_run(run_id: str) -> None:
             status=RunStatus.FAILED,
             error=str(exc),
         )
+    finally:
+        await run_store.remove_task(run_id)

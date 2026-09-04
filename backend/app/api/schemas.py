@@ -12,7 +12,7 @@ class RunStartResponse(BaseModel):
 
 
 class RunStatusResponse(BaseModel):
-    status: str = Field(..., description="pending | running | completed | failed")
+    status: str = Field(..., description="pending | running | completed | failed | cancelled")
     records_processed: int
     total_records: int
     fast_path_resolved_so_far: int
@@ -51,6 +51,7 @@ class RunResultsResponse(BaseModel):
     dead_letter_queue: List[Dict[str, Any]] = Field(default_factory=list)
     caveats: List[str] = Field(default_factory=list)
     reproducibility: Dict[str, Any] = Field(default_factory=dict)
+    dataset_manifest: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RunResultsSummary(BaseModel):

@@ -9,7 +9,7 @@ import {
 } from 'react'
 
 import Link from 'next/link'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 
 import {
   AnimatePresence,
@@ -70,6 +70,7 @@ type RunPhase =
   | 'running'
   | 'completed'
   | 'failed'
+  | 'cancelled'
   | 'not-found'
   | 'unknown'
 
@@ -88,6 +89,7 @@ type Snapshot = {
 
 export default function RunPage() {
   const { runId = '' } = useParams<{ runId: string }>()
+  const router = useRouter()
 
   /*
    * BOTH queries live here.
@@ -124,6 +126,10 @@ export default function RunPage() {
 
     if (status === 'failed') {
       return 'failed'
+    }
+
+    if (status === 'cancelled') {
+      return 'cancelled'
     }
 
     if (statusNotFound && hasPersistedResult) {
@@ -233,6 +239,8 @@ export default function RunPage() {
             ? 'The evidence is in.'
           : phase === 'failed'
               ? 'The run needs attention.'
+          : phase === 'cancelled'
+              ? 'The run was cancelled.'
               : phase === 'not-found'
                 ? 'This investigation could not be found.'
               : phase === 'loading'
@@ -284,7 +292,8 @@ export default function RunPage() {
             runId={runId}
             query={statusQuery}
             status={status}
-            failed={phase === 'failed'}
+            failed={phase === 'failed' || phase === 'cancelled'}
+            onCancelled={() => router.replace('/runs')}
           />
         )}
       </section>
@@ -345,11 +354,13 @@ function Live({
   query,
   status,
   failed,
+  onCancelled,
 }: {
   runId: string
   query: ReturnType<typeof useRunStatus>
   status: string
   failed: boolean
+  onCancelled: () => void
 }) {
   const reduced = useReducedMotion()
 
@@ -367,6 +378,37 @@ function Live({
 
   const [activities, setActivities] =
     useState<Activity[]>([])
+  const [cancelling, setCancelling] = useState(false)
+
+  async function cancelRun() {
+    if (cancelling || status === 'completed' || status === 'cancelled') {
+      return
+    }
+
+    setCancelling(true)
+
+    try {
+      const response = await fetch(
+        `/api/runs/${encodeURIComponent(runId)}/cancel`,
+        { method: 'POST' },
+      )
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+          data?.message ||
+          'Unable to cancel this run.',
+        )
+      }
+
+      onCancelled()
+    } catch (error) {
+      console.error('Cancel run failed:', error)
+      setCancelling(false)
+    }
+  }
 
   /* The fast matcher can resolve its deterministic population before the
    * browser receives its very first polling response. Begin the visual story
@@ -720,6 +762,15 @@ function Live({
           {runId}
         </span>
       </div>
+
+      {!failed && status !== 'completed' && status !== 'cancelled' && (
+        <div className="live-actions">
+          <span>Need to stop this investigation?</span>
+          <button className="cancel-run-btn" type="button" onClick={cancelRun} disabled={cancelling}>
+            {cancelling ? 'Cancelling…' : 'Cancel run'}
+          </button>
+        </div>
+      )}
 
       <div className="live-hero-row">
         <div>
@@ -1269,7 +1320,7 @@ function Results({
                         </p>
 
                         <button
-                          className="trace-open"
+                          className="trace-open case-trace-action"
                           type="button"
                           onClick={() =>
                             openTrace(
@@ -1277,7 +1328,7 @@ function Results({
                             )
                           }
                         >
-                          Inspect trace
+                          Open evidence
                           <FileSearch
                             size={15}
                           />
@@ -1308,6 +1359,8 @@ function Results({
           closeTrace
         }
         recordId={traceId}
+        runId={runId}
+        showTrigger={false}
       />
     </div>
   )

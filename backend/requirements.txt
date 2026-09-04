@@ -8,3 +8,6 @@ requests==2.34.2
 openai==3.3.1
 pytest==9.1.1
 rapidfuzz==3.14.5
+python-multipart==0.0.20
+redis==7.1.0
+httpx==0.28.1

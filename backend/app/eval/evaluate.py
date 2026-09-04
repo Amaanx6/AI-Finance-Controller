@@ -67,6 +67,7 @@ FastProgressCB = Callable[[int, int, Optional[MatchResult]], None]
 AgentProgressCB = Callable[[Dict[str, Any]], None]
 ExceptionCB = Callable[[Dict[str, Any]], None]
 DLQCB = Callable[[Dict[str, Any]], None]
+CancelCheck = Callable[[], Awaitable[bool]]
 
 
 class _TeeCapture(io.StringIO):
@@ -151,6 +152,8 @@ async def _resolve_batch_with_progress(
     exception_cb: Optional[ExceptionCB] = None,
     dlq_cb: Optional[DLQCB] = None,
     circuit_breaker: Optional[CircuitBreaker] = None,
+    trace_dir: Optional[Path] = None,
+    cancel_check: Optional[CancelCheck] = None,
 ) -> List[Dict[str, Any]]:
     start_time = time.time()
     concurrency = len(KEY_STATES) if KEY_STATES else 1
@@ -159,7 +162,14 @@ async def _resolve_batch_with_progress(
 
     async def process(record: Dict[str, Any]) -> None:
         record_id = record.get("record_id", "UNKNOWN")
+
+        if cancel_check is not None and await cancel_check():
+            raise asyncio.CancelledError()
+
         async with sem:
+            if cancel_check is not None and await cancel_check():
+                raise asyncio.CancelledError()
+
             key = get_least_loaded_key()
 
             if circuit_breaker is not None and circuit_breaker.is_open(key.provider):
@@ -189,7 +199,16 @@ async def _resolve_batch_with_progress(
 
             call_start = time.time()
             try:
-                result = await resolve_record(record, all_ledger, all_gateway, key)
+                if cancel_check is not None and await cancel_check():
+                    raise asyncio.CancelledError()
+
+                result = await resolve_record(
+                    record,
+                    all_ledger,
+                    all_gateway,
+                    key,
+                    trace_dir=trace_dir,
+                )
                 if circuit_breaker is not None:
                     circuit_breaker.record_success(key.provider)
                 log_event(
@@ -235,6 +254,10 @@ async def _resolve_batch_with_progress(
                 progress_cb(result)
 
     log_event("agent_stage_start", run_id, total_records=len(bank_records))
+
+    if cancel_check is not None and await cancel_check():
+        raise asyncio.CancelledError()
+
     await asyncio.gather(*(process(r) for r in bank_records))
 
     total_time = time.time() - start_time
@@ -302,6 +325,7 @@ async def run_single_agent_baseline(
     run_id: str = "cli",
     circuit_breaker: Optional[CircuitBreaker] = None,
     dlq_cb: Optional[DLQCB] = None,
+    cancel_check: Optional[CancelCheck] = None,
 ) -> List[Dict[str, Any]]:
     concurrency = len(KEY_STATES) if KEY_STATES else 1
     baseline_sem = asyncio.Semaphore(max(4, concurrency))
@@ -309,7 +333,13 @@ async def run_single_agent_baseline(
     tasks = []
     
     async def process(rec):
+        if cancel_check is not None and await cancel_check():
+            raise asyncio.CancelledError()
+
         async with baseline_sem:
+            if cancel_check is not None and await cancel_check():
+                raise asyncio.CancelledError()
+
             key = get_least_loaded_key()
 
             if circuit_breaker is not None and circuit_breaker.is_open(key.provider):
@@ -331,6 +361,9 @@ async def run_single_agent_baseline(
                 }
 
             try:
+                if cancel_check is not None and await cancel_check():
+                    raise asyncio.CancelledError()
+
                 result = await _baseline_resolve_one(rec, all_ledger, all_gateway, key)
                 if circuit_breaker is not None:
                     circuit_breaker.record_success(key.provider)
@@ -359,6 +392,10 @@ async def run_single_agent_baseline(
         tasks.append(process(record))
 
     print(f"\n[Baseline] Resolving {len(bank_records)} records (proposer-only, no verifier).")
+
+    if cancel_check is not None and await cancel_check():
+        raise asyncio.CancelledError()
+
     return await asyncio.gather(*tasks)
 
 def _score_predictions(
@@ -468,11 +505,18 @@ def _extract_prediction_from_agent(trace: Dict[str, Any]) -> Dict[str, Any]:
 
 async def run_evaluation(
     run_id: str = "cli",
+    bank_path: Optional[Path] = None,
+    ledger_path: Optional[Path] = None,
+    gateway_path: Optional[Path] = None,
+    ground_truth_path: Optional[Path] = None,
+    results_dir: Optional[Path] = None,
+    trace_dir: Optional[Path] = None,
     fast_progress_cb: Optional[FastProgressCB] = None,
     agent_progress_cb: Optional[AgentProgressCB] = None,
     exception_cb: Optional[ExceptionCB] = None,
     dlq_cb: Optional[DLQCB] = None,
     circuit_breaker: Optional[CircuitBreaker] = None,
+    cancel_check: Optional[CancelCheck] = None,
 ) -> Dict[str, Any]:
     """Run the full fast-path + agent + baseline evaluation pipeline.
 
@@ -500,17 +544,20 @@ async def run_evaluation(
         )
     print(f"[config] PROVIDER confirmed as '{configured_provider}'.")
 
-    if not (BANK_CSV.exists() and LEDGER_CSV.exists() and GATEWAY_CSV.exists()):
-        raise FileNotFoundError(
-            f"Expected sample CSVs under {SAMPLES_DIR} "
-            f"(bank_statement.csv / internal_ledger.csv / gateway_export.csv) -- not found."
-        )
-    if not GROUND_TRUTH_CSV.exists():
-        raise FileNotFoundError(f"Ground truth not found at {GROUND_TRUTH_CSV}")
+    bank_path = bank_path or BANK_CSV
+    ledger_path = ledger_path or LEDGER_CSV
+    gateway_path = gateway_path or GATEWAY_CSV
+    ground_truth_path = ground_truth_path or GROUND_TRUTH_CSV
+    results_dir = results_dir or RESULTS_DIR
 
-    bank_records = load_csv(BANK_CSV)
-    ledger_records = load_csv(LEDGER_CSV)
-    gateway_records = load_csv(GATEWAY_CSV)
+    if not (bank_path.exists() and ledger_path.exists() and gateway_path.exists()):
+        raise FileNotFoundError(
+            "Expected bank, ledger, and gateway CSV inputs; one or more files were not found."
+        )
+
+    bank_records = load_csv(bank_path)
+    ledger_records = load_csv(ledger_path)
+    gateway_records = load_csv(gateway_path)
 
     total_records = len(bank_records)
     print(f"\nLoaded {total_records} bank records, {len(ledger_records)} ledger records, "
@@ -531,6 +578,9 @@ async def run_evaluation(
                 "provider": None,
                 "detail": "Reference number matched but amount fell outside tolerance.",
             })
+
+    if cancel_check is not None and await cancel_check():
+        raise asyncio.CancelledError()
 
     fast_start = time.time()
     fast_results = fast_match_bank_records(
@@ -554,6 +604,9 @@ async def run_evaluation(
 
     escalated_bank_records = [bank_records_numeric[r.bank_id] for r in needs_agent]
 
+    if cancel_check is not None and await cancel_check():
+        raise asyncio.CancelledError()
+
     print(f"\n[Full pipeline] Escalating {len(escalated_bank_records)} records to resolve_batch()...")
     full_stdout = _TeeCapture(sys.stdout)
     agent_start = time.time()
@@ -561,7 +614,8 @@ async def run_evaluation(
         agent_results = await _resolve_batch_with_progress(
             escalated_bank_records, ledger_records_numeric, gateway_records_numeric,
             run_id=run_id, progress_cb=agent_progress_cb, exception_cb=exception_cb,
-            dlq_cb=dlq_cb, circuit_breaker=circuit_breaker,
+            dlq_cb=dlq_cb, circuit_breaker=circuit_breaker, trace_dir=trace_dir,
+            cancel_check=cancel_check,
         )
     agent_elapsed = time.time() - agent_start
     full_pipeline_waits = _count_provider_waits(full_stdout.getvalue())
@@ -591,6 +645,9 @@ async def run_evaluation(
     print(f"Records per key: {key_counts_full}")
     print(f"Rate-limit / pacing waits observed: {full_pipeline_waits}")
 
+    if cancel_check is not None and await cancel_check():
+        raise asyncio.CancelledError()
+
     print(f"\n[Baseline] Running proposer-only baseline on the SAME {len(escalated_bank_records)} escalated records...")
     baseline_stdout = _TeeCapture(sys.stdout)
     baseline_start = time.time()
@@ -598,6 +655,7 @@ async def run_evaluation(
         baseline_results = await run_single_agent_baseline(
             escalated_bank_records, ledger_records_numeric, gateway_records_numeric,
             run_id=run_id, circuit_breaker=circuit_breaker, dlq_cb=dlq_cb,
+            cancel_check=cancel_check,
         )
     baseline_elapsed = time.time() - baseline_start
     baseline_waits = _count_provider_waits(baseline_stdout.getvalue())
@@ -625,7 +683,7 @@ async def run_evaluation(
     print(f"Records per key: {key_counts_baseline}")
     print(f"Rate-limit / pacing waits observed: {baseline_waits}")
 
-    ground_truth = load_ground_truth(GROUND_TRUTH_CSV)
+    ground_truth = load_ground_truth(ground_truth_path) if ground_truth_path.exists() else {}
     orphan_rows = ground_truth.pop("__orphans__", [])
     if orphan_rows:
         print(f"\n[Ground truth] {len(orphan_rows)} orphan ledger/gateway-only anomaly rows "
@@ -851,7 +909,11 @@ async def run_evaluation(
         ],
     }
 
-    results_path = RESULTS_DIR / f"eval_run_{timestamp}.json"
+    if cancel_check is not None and await cancel_check():
+        raise asyncio.CancelledError()
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+    results_path = results_dir / f"eval_run_{run_id}.json"
     with open(results_path, "w", encoding="utf-8") as f:
         json.dump(results_payload, f, indent=2, default=str)
 
