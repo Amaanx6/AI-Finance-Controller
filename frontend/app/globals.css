@@ -1642,3 +1642,244 @@ main { position: relative; overflow: clip; background: radial-gradient(ellipse a
     grid-template-columns: 1fr;
   }
 }
+/* =========================================================
+   FINAL LANDING PAGE FAILURE-MODE FIX
+   ========================================================= */
+
+.problem-art {
+  position: relative;
+  min-height: 440px;
+  width: 100%;
+  overflow: visible;
+}
+
+/* Cards */
+
+.problem-card {
+  position: absolute;
+  width: 290px;
+  padding: 28px 30px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+
+  border-radius: 2px;
+
+  box-shadow:
+    16px 22px 45px rgba(0, 0, 0, 0.28),
+    0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.problem-card span {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+
+.problem-card strong {
+  display: block;
+  margin-top: 5px;
+
+  font-size: 31px;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+
+  white-space: nowrap;
+}
+
+.problem-card small {
+  display: block;
+  margin-top: 2px;
+
+  font-size: 12px;
+  opacity: 0.68;
+}
+
+/* Gateway */
+
+.gateway-card {
+  top: 25px;
+  left: 2%;
+  z-index: 3;
+
+  background: #ebe8df;
+  color: #242721;
+
+  transform: rotate(-5deg);
+}
+
+/* Ledger */
+
+.ledger-card {
+  right: 2%;
+  bottom: 92px;
+  z-index: 3;
+
+  background: #bfe0cd;
+  color: #17382f;
+
+  transform: rotate(5deg);
+}
+
+/* Relationship */
+
+.problem-relation {
+  position: absolute;
+
+  left: 50%;
+  top: 50%;
+
+  z-index: 2;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  transform: translate(-50%, -50%);
+
+  padding: 8px 12px;
+
+  border: 1px solid rgba(232, 186, 112, 0.28);
+  border-radius: 999px;
+
+  background: rgba(8, 9, 11, 0.84);
+  backdrop-filter: blur(10px);
+
+  color: var(--amber);
+
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+
+  white-space: nowrap;
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.problem-relation b {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* Explanation */
+
+.artifact-note {
+  position: absolute;
+
+  left: 50%;
+  bottom: 4px;
+
+  z-index: 5;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  transform: translateX(-50%);
+
+  color: var(--amber);
+  font-size: 11px;
+
+  white-space: nowrap;
+}
+
+/* Tablet */
+
+@media (max-width: 900px) {
+  .problem-art {
+    min-height: 430px;
+  }
+
+  .problem-card {
+    width: 255px;
+    padding: 25px;
+  }
+
+  .gateway-card {
+    left: 0;
+  }
+
+  .ledger-card {
+    right: 0;
+    bottom: 84px;
+  }
+
+  .problem-relation {
+    font-size: 8px;
+  }
+}
+
+/* Mobile */
+
+@media (max-width: 768px) {
+  .problem-art {
+    min-height: 470px;
+  }
+
+  .problem-card {
+    width: min(260px, 76vw);
+  }
+
+  .gateway-card {
+    top: 18px;
+    left: 1%;
+    transform: rotate(-4deg);
+  }
+
+  .ledger-card {
+    right: 1%;
+    bottom: 82px;
+    transform: rotate(4deg);
+  }
+
+  /*
+   * The relationship pill is hidden on mobile.
+   * The two cards already communicate the relationship
+   * through their values and subtitles.
+   */
+  .problem-relation {
+    display: none;
+  }
+
+  .artifact-note {
+    width: 100%;
+    bottom: 18px;
+    padding-inline: 18px;
+
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+/* Small phones */
+
+@media (max-width: 520px) {
+  .problem-art {
+    min-height: 500px;
+  }
+
+  .problem-card {
+    width: min(245px, 78vw);
+    padding: 22px;
+  }
+
+  .gateway-card {
+    top: 10px;
+    left: 0;
+  }
+
+  .ledger-card {
+    right: 0;
+    bottom: 88px;
+  }
+
+  .problem-card strong {
+    font-size: 27px;
+  }
+}
