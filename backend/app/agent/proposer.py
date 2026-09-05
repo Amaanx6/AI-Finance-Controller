@@ -1,6 +1,5 @@
 from dotenv import load_dotenv
 import re
-import os
 import time
 import json
 import asyncio
@@ -485,7 +484,7 @@ async def run_proposer(bank_record: Dict[str, Any], candidates: List[Dict[str, A
                     except:
                         pass
                 elif function_name == "description_similarity":
-                    print(f"\n  [AGENT TOOL CALL] -> description_similarity")
+                    print("\n  [AGENT TOOL CALL] -> description_similarity")
 
                 if function_name == "submit_final_decision":
                     try:

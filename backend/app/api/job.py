@@ -254,9 +254,6 @@ async def execute_run(run_id: str) -> None:
 
         # The agent progress counter means "records handled by the agent",
         # regardless of whether the final decision was confirmed or exceptional.
-        full_scores = results_payload.get("full_pipeline_scores") or {}
-        detail_rows = full_scores.get("detail_rows") or []
-
         agent_record_count = max(
             0,
             int(results_payload.get("total_records", total_records) or total_records)

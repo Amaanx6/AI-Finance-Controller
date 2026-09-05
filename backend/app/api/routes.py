@@ -531,9 +531,47 @@ async def get_run_reasoning_trace(run_id: str, record_id: str, session_id: Optio
 
 
 @router.get("/reasoning-trace/{record_id}", response_model=ReasoningTraceResponse)
-async def get_reasoning_trace(record_id: str) -> ReasoningTraceResponse: # pyright: ignore[reportReturnType]
-    """Legacy trace lookup retained for older persisted runs."""
-    filepath = TRACE_DIR / f"{record_id}.json"
+async def get_reasoning_trace(record_id: str) -> ReasoningTraceResponse:
+    """Legacy trace lookup retained for older persisted runs.
+
+    Older traces were written flat under TRACE_DIR/{record_id}.json, before
+    traces were namespaced per run under TRACE_DIR/{run_id}/{record_id}.json.
+    Check the flat legacy path first, then fall back to scanning per-run
+    folders for a matching record_id, newest run first.
+    """
+    flat_path = TRACE_DIR / f"{record_id}.json"
+    if flat_path.exists():
+        try:
+            with flat_path.open("r", encoding="utf-8") as file:
+                return ReasoningTraceResponse(**json.load(file))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unable to read reasoning trace for '{record_id}': {exc}",
+            ) from exc
+
+    if TRACE_DIR.exists():
+        run_dirs = sorted(
+            (p for p in TRACE_DIR.iterdir() if p.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for run_dir in run_dirs:
+            candidate = run_dir / f"{record_id}.json"
+            if candidate.exists():
+                try:
+                    with candidate.open("r", encoding="utf-8") as file:
+                        return ReasoningTraceResponse(**json.load(file))
+                except (OSError, json.JSONDecodeError) as exc:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Unable to read reasoning trace for '{record_id}': {exc}",
+                    ) from exc
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"No reasoning trace found for record '{record_id}'.",
+    )
 
 
 @router.get("/exceptions/{run_id}", response_model=RunExceptionsResponse)

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.routes import router as api_router
 from backend.app.api import job
-from backend.app.api.store import run_store
+from backend.app.api.store import RunStatus, run_store
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -52,7 +52,7 @@ async def _run_queue_worker() -> None:
             except Exception as exc:  # noqa: BLE001 - isolate one queued run
                 await run_store.update_run(
                     run_id,
-                    status="failed",
+                    status=RunStatus.FAILED,
                     error=f"Queued run failed: {exc}",
                 )
         else:

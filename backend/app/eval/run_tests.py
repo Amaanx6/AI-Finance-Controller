@@ -1,8 +1,6 @@
 import sys
 from pathlib import Path
-import os
 import csv
-import json
 import asyncio
 import argparse
 
@@ -17,7 +15,6 @@ for p in [str(PROJECT_ROOT), str(BACKEND_DIR)]:
 from backend.app.agent.verifier import run_verifier
 from backend.app.agent.proposer import get_candidate_pool
 from backend.app.matcher.reconciler import resolve_batch
-from backend.app.agent import config
 
 SAMPLE_DIR = BACKEND_DIR / "app" / "data_generation" / "samples"
 BANK_CSV = SAMPLE_DIR / "bank_statement.csv"

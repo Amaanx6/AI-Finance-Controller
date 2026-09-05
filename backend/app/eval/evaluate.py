@@ -16,7 +16,6 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from backend.app.matcher.fast_matcher import load_csv, fast_match_bank_records, MatchResult
 from backend.app.matcher.reconciler import (
-    resolve_batch,
     resolve_record,
     start_wait_tracking,
     stop_wait_tracking,
@@ -642,7 +641,7 @@ async def run_evaluation(
         provider_counts_full[r.get("provider", "unknown")] = provider_counts_full.get(r.get("provider", "unknown"), 0) + 1
         key_counts_full[r.get("handled_by_key", "unknown")] = key_counts_full.get(r.get("handled_by_key", "unknown"), 0) + 1
 
-    print(f"\n--- AGENT STAGE (full pipeline) COMPLETE ---")
+    print("\n--- AGENT STAGE (full pipeline) COMPLETE ---")
     print(f"Agent-confirmed: {len(agent_confirmed)}")
     print(f"Exception:       {len(agent_exception)}")
     print(f"Records per provider: {provider_counts_full}")
@@ -680,7 +679,7 @@ async def run_evaluation(
     baseline_confirmed = [r for r in baseline_results if r.get("final_status") == "confirmed"]
     baseline_exception = [r for r in baseline_results if r.get("final_status") not in ("confirmed",)]
 
-    print(f"\n--- BASELINE STAGE COMPLETE ---")
+    print("\n--- BASELINE STAGE COMPLETE ---")
     print(f"Baseline-confirmed: {len(baseline_confirmed)}")
     print(f"Exception:          {len(baseline_exception)}")
     print(f"Records per provider: {provider_counts_baseline}")

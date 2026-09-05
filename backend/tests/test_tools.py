@@ -1,4 +1,3 @@
-import pytest
 from app.agent.tools import sum_check, description_similarity
 
 

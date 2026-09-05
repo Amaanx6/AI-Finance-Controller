@@ -4,7 +4,6 @@ import random
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Tuple
-import sys
 
 
 class TransactionGenerator:
@@ -291,7 +290,7 @@ class TransactionGenerator:
         }
 
         print("\n[*] Generating synthetic transactions...")
-        print(f"Pattern distribution:")
+        print("Pattern distribution:")
         print(f"  - Clean 1:1 matches: {pattern_counts['clean_1to1']}")
         print(f"  - Many-to-one settlements: {pattern_counts['many_to_one']}")
         print(f"  - Description mismatches: {pattern_counts['desc_mismatch']}")
@@ -391,13 +390,13 @@ def main():
     files = gen.save_csvs()
 
     print("\n[OK] Data generation complete!")
-    print(f"\n[FILES] Saved to:")
+    print("\n[FILES] Saved to:")
     print(f"  - {files['bank_file']}")
     print(f"  - {files['ledger_file']}")
     print(f"  - {files['gateway_file']}")
     print(f"  - {files['mapping_file']}")
 
-    print(f"\n[STATS] Record counts:")
+    print("\n[STATS] Record counts:")
     print(f"  - Bank statement: {stats['bank_records']} records")
     print(f"  - Internal ledger: {stats['ledger_records']} records")
     print(f"  - Gateway export: {stats['gateway_records']} records")

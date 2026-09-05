@@ -8,7 +8,6 @@ from typing import List, Dict, Any, Optional
 
 from backend.app.agent.proposer import run_proposer, get_candidate_pool, KeyState, KEY_STATES, get_least_loaded_key
 from backend.app.agent.verifier import run_verifier
-from backend.app.agent import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 TRACE_DIR = BASE_DIR / "logs" / "reasoning_trace"
